@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>DeskPuff.Bluetooth</AssemblyName>
+    <RootNamespace>DeskPuff.Bluetooth.Windows</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DeskPuff.Core\DeskPuff.Core.csproj" />
+  </ItemGroup>
+</Project>

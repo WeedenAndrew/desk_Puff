@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src/DeskPuff.Core/DeskPuff.Core.csproj" />
+  <Project Path="src/DeskPuff.Bluetooth.Windows/DeskPuff.Bluetooth.Windows.csproj" />
+  <Project Path="src/DeskPuff.App/DeskPuff.App.csproj" />
+  <Project Path="tests/DeskPuff.Core.Tests/DeskPuff.Core.Tests.csproj" />
+  <Project Path="tests/DeskPuff.Bluetooth.Windows.Tests/DeskPuff.Bluetooth.Windows.Tests.csproj" />
+</Solution>

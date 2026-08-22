@@ -1,0 +1,1358 @@
+<Window x:Class="DeskPuff.App.MainWindow"
+        xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:DeskPuff.App.Controls"
+        Title="desk_Puff"
+        Width="460"
+        Height="760"
+        MinWidth="460"
+        MinHeight="760"
+        SystemDecorations="None"
+        CanResize="True"
+        WindowStartupLocation="CenterScreen"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+  <Window.Resources>
+    <DataTemplate x:Key="ShortcutOptionTemplate">
+      <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextBrush}" />
+    </DataTemplate>
+    <DataTemplate x:Key="DarkComboItemTemplate">
+      <TextBlock Text="{Binding}" Foreground="{StaticResource TextBrush}" />
+    </DataTemplate>
+  </Window.Resources>
+  <Border Background="{StaticResource WindowBrush}"
+          BorderBrush="#2A2D35"
+          BorderThickness="1"
+          CornerRadius="20">
+    <Viewbox Stretch="Uniform"
+             StretchDirection="Both"
+             HorizontalAlignment="Stretch"
+             VerticalAlignment="Stretch">
+      <Grid Width="458" Height="758">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="46" />
+        <RowDefinition Height="*" />
+        <RowDefinition Height="78" />
+      </Grid.RowDefinitions>
+
+      <Grid x:Name="TitleBar"
+            Grid.Row="0"
+            Background="Transparent"
+            PointerPressed="TitleBarPointerPressed">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="38" />
+          <ColumnDefinition Width="38" />
+          <ColumnDefinition Width="38" />
+        </Grid.ColumnDefinitions>
+        <Button Grid.Column="0"
+                AutomationProperties.AutomationId="SettingsNavButton"
+                Command="{Binding ShowSettingsCommand}"
+                Content="⚙"
+                FontFamily="Segoe UI Symbol"
+                FontSize="20"
+                Width="42"
+                Height="38"
+                Padding="0"
+                Margin="12,0,0,0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                Background="Transparent"
+                BorderThickness="0"
+                ToolTip="Settings" />
+        <Border Grid.Column="1"
+                Background="#1C2027"
+                CornerRadius="8"
+                Padding="8,4"
+                Margin="0,0,7,0"
+                VerticalAlignment="Center">
+          <TextBlock Text="{Binding HeaderBadgeText}"
+                     Foreground="{StaticResource MutedBrush}"
+                     FontSize="9"
+                     FontWeight="SemiBold"
+                     MaxWidth="132"
+                     TextTrimming="CharacterEllipsis"
+                     ToolTip="{Binding HeaderBadgeText}" />
+        </Border>
+        <Button Grid.Column="2"
+                Content="—"
+                Click="MinimizeButtonClick"
+                Padding="0"
+                Margin="2"
+                Background="Transparent"
+                BorderThickness="0"
+                FontSize="14" />
+        <Button x:Name="MaximizeButton"
+                Grid.Column="3"
+                Content="□"
+                Click="MaximizeButtonClick"
+                Padding="0"
+                Margin="2"
+                Background="Transparent"
+                BorderThickness="0"
+                FontSize="14"
+                ToolTip="Maximize" />
+        <Button Grid.Column="4"
+                Content="×"
+                Click="CloseButtonClick"
+                Padding="0"
+                Margin="2,2,8,2"
+                Background="Transparent"
+                BorderThickness="0"
+                FontSize="18" />
+      </Grid>
+
+      <Grid Grid.Row="1">
+        <Grid Visibility="{Binding ConnectionVisibility}"
+              Margin="28,20,28,22">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <Grid Grid.Row="0" HorizontalAlignment="Center" Margin="0,4,0,24">
+            <Ellipse Width="92"
+                     Height="92"
+                     Stroke="{DynamicResource AccentBrush}"
+                     StrokeThickness="2"
+                     Opacity="0.9" />
+            <Ellipse Width="68"
+                     Height="68"
+                     Stroke="#42514F"
+                     StrokeThickness="1" />
+            <TextBlock Text="P"
+                       FontSize="34"
+                       FontWeight="Light"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+          </Grid>
+          <StackPanel Grid.Row="1" Margin="0,0,0,18">
+            <TextBlock Text="CONNECT YOUR DEVICE"
+                       HorizontalAlignment="Center"
+                       FontSize="17"
+                       FontWeight="SemiBold" />
+            <TextBlock Text="App-enabled Puffco bases only"
+                       HorizontalAlignment="Center"
+                       Foreground="{StaticResource MutedBrush}"
+                       FontSize="11"
+                       Margin="0,6,0,0" />
+          </StackPanel>
+          <ListBox Grid.Row="2"
+                   ItemsSource="{Binding Candidates}"
+                   SelectedItem="{Binding SelectedCandidate}"
+                   Background="{StaticResource PanelBrush}"
+                   BorderBrush="#282C35"
+                   BorderThickness="1"
+                   Padding="6"
+                   Foreground="{StaticResource TextBrush}">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding SignalStrength, StringFormat={}{0} dBm}"
+                             Foreground="{StaticResource MutedBrush}"
+                             FontSize="10" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <TextBlock Grid.Row="3"
+                     Text="{Binding StatusText}"
+                     Foreground="{StaticResource MutedBrush}"
+                     FontSize="10"
+                     TextAlignment="Center"
+                     TextWrapping="Wrap"
+                     Margin="0,14,0,12" />
+          <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="10" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0"
+                    Content="SCAN AGAIN"
+                    Command="{Binding ScanCommand}" />
+            <Button Grid.Column="2"
+                    Content="CONNECT"
+                    Command="{Binding ConnectCommand}"
+                    Background="{DynamicResource AccentBrush}"
+                    Foreground="{DynamicResource AccentForegroundBrush}"
+                    BorderBrush="{DynamicResource AccentBrush}" />
+          </Grid>
+        </Grid>
+
+        <Grid Visibility="{Binding HomeVisibility}" Margin="22,0,22,12">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="106" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="78" />
+          </Grid.RowDefinitions>
+
+          <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="72" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="72" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+              <Rectangle Width="6" Height="18" RadiusX="2" RadiusY="2"
+                         Fill="{DynamicResource AccentBrush}"
+                         Opacity="{Binding BatteryBlockOneOpacity}" />
+              <Rectangle Width="6" Height="18" RadiusX="2" RadiusY="2"
+                         Fill="{DynamicResource AccentBrush}"
+                         Opacity="{Binding BatteryBlockTwoOpacity}"
+                         Margin="2,0,0,0" />
+              <Rectangle Width="6" Height="18" RadiusX="2" RadiusY="2"
+                         Fill="{DynamicResource AccentBrush}"
+                         Opacity="{Binding BatteryBlockThreeOpacity}"
+                         Margin="2,0,0,0" />
+              <Rectangle Width="6" Height="18" RadiusX="2" RadiusY="2"
+                         Fill="{DynamicResource AccentBrush}"
+                         Opacity="{Binding BatteryBlockFourOpacity}"
+                         Margin="2,0,0,0" />
+              <TextBlock Text="{Binding BatteryText}"
+                         FontSize="10"
+                         Foreground="{StaticResource MutedBrush}"
+                         VerticalAlignment="Center"
+                         Margin="6,0,0,0" />
+            </StackPanel>
+            <StackPanel Grid.Column="1"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+              <TextBlock Text="{Binding DeviceName}"
+                         FontSize="19"
+                         FontWeight="SemiBold"
+                         HorizontalAlignment="Center"
+                         TextTrimming="CharacterEllipsis"
+                         MaxWidth="240" />
+              <TextBlock Text="{Binding VaporText}"
+                         FontSize="10"
+                         Foreground="{DynamicResource AccentBrush}"
+                         FontWeight="SemiBold"
+                         HorizontalAlignment="Center"
+                         Margin="0,5,0,0" />
+            </StackPanel>
+            <StackPanel Grid.Column="2"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+              <TextBlock Text="{Binding ChamberText}"
+                         FontSize="9"
+                         FontWeight="SemiBold"
+                         Foreground="{StaticResource MutedBrush}"
+                         HorizontalAlignment="Center"
+                         TextAlignment="Center"
+                         TextWrapping="Wrap"
+                         MaxWidth="70" />
+            </StackPanel>
+          </Grid>
+
+          <Grid Grid.Row="1" VerticalAlignment="Center">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="64" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="64" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0"
+                    Content="‹"
+                    Command="{Binding PreviousProfileCommand}"
+                    Width="52"
+                    Height="52"
+                    Padding="0"
+                    FontSize="29"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    VerticalAlignment="Top"
+                    Margin="0,89,0,0"
+                    ToolTip="{Binding PreviousProfileShortcutText, StringFormat=Previous profile ({0})}" />
+
+            <Grid Grid.Column="1" Width="260" Height="260">
+              <Button AutomationProperties.AutomationId="StartStopButton"
+                      Width="226"
+                      Height="226"
+                      Padding="0"
+                      VerticalAlignment="Top"
+                      Command="{Binding StartStopCommand}"
+                      Background="#171A20"
+                      BorderBrush="{Binding ActiveProfileColor}"
+                      BorderThickness="3">
+                <Button.Template>
+                  <ControlTemplate TargetType="Button">
+                          <Grid>
+                            <Ellipse x:Name="Outer"
+                                     Fill="{TemplateBinding Background}"
+                                     Stroke="{TemplateBinding BorderBrush}"
+                                     StrokeThickness="{TemplateBinding BorderThickness}" />
+                            <Path Data="M 113,3 A 110,110 0 0 1 223,113"
+                                  StrokeThickness="4"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  IsHitTestVisible="False">
+                              <Path.Stroke>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                  <GradientStop Color="{Binding ProfileColorOne}" Offset="0" />
+                                  <GradientStop Color="{Binding ProfileColorTwo}" Offset="1" />
+                                </LinearGradientBrush>
+                              </Path.Stroke>
+                            </Path>
+                            <Path Data="M 223,113 A 110,110 0 0 1 113,223"
+                                  StrokeThickness="4"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  IsHitTestVisible="False">
+                              <Path.Stroke>
+                                <LinearGradientBrush StartPoint="1,0" EndPoint="0,1">
+                                  <GradientStop Color="{Binding ProfileColorTwo}" Offset="0" />
+                                  <GradientStop Color="{Binding ProfileColorThree}" Offset="1" />
+                                </LinearGradientBrush>
+                              </Path.Stroke>
+                            </Path>
+                            <Path Data="M 113,223 A 110,110 0 0 1 3,113"
+                                  StrokeThickness="4"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  IsHitTestVisible="False">
+                              <Path.Stroke>
+                                <LinearGradientBrush StartPoint="1,1" EndPoint="0,0">
+                                  <GradientStop Color="{Binding ProfileColorThree}" Offset="0" />
+                                  <GradientStop Color="{Binding ProfileColorFour}" Offset="1" />
+                                </LinearGradientBrush>
+                              </Path.Stroke>
+                            </Path>
+                            <Path Data="M 3,113 A 110,110 0 0 1 113,3"
+                                  StrokeThickness="4"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  IsHitTestVisible="False">
+                              <Path.Stroke>
+                                <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                                  <GradientStop Color="{Binding ProfileColorFour}" Offset="0" />
+                                  <GradientStop Color="{Binding ProfileColorOne}" Offset="1" />
+                                </LinearGradientBrush>
+                              </Path.Stroke>
+                            </Path>
+                            <Ellipse Margin="11"
+                                     Stroke="{TemplateBinding BorderBrush}"
+                                     StrokeThickness="1"
+                                     Opacity="0.28" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                          </Grid>
+                  </ControlTemplate>
+                </Button.Template>
+                <Grid Width="190" Height="190">
+                  <TextBlock Text="{Binding ProfileName}"
+                             FontSize="11"
+                             FontWeight="SemiBold"
+                             Foreground="{Binding ActiveProfileForegroundDisplay}"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Top"
+                             Margin="0,14,0,0" />
+                  <StackPanel VerticalAlignment="Center" Margin="0,8,0,0">
+                    <TextBlock Text="{Binding TemperatureText}"
+                               FontSize="52"
+                               FontWeight="Light"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding TemperatureCaption}"
+                               FontSize="9"
+                               FontWeight="SemiBold"
+                               Foreground="#B9BEC7"
+                               HorizontalAlignment="Center"
+                               Margin="0,-5,0,7" />
+                    <TextBlock Text="{Binding SessionTimeText}"
+                               FontSize="23"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding StartStopText}"
+                             FontSize="10"
+                             FontWeight="Bold"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Bottom"
+                             Margin="0,0,0,17" />
+                </Grid>
+              </Button>
+
+            </Grid>
+
+            <Button Grid.Column="2"
+                    Content="›"
+                    Command="{Binding NextProfileCommand}"
+                    Width="52"
+                    Height="52"
+                    Padding="0"
+                    FontSize="29"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    VerticalAlignment="Top"
+                    Margin="0,89,0,0"
+                    ToolTip="{Binding NextProfileShortcutText, StringFormat=Next profile ({0})}" />
+          </Grid>
+
+          <Grid Grid.Row="2" VerticalAlignment="Center">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="154" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0"
+                    AutomationProperties.AutomationId="TemperatureQuickHitButton"
+                    Width="64"
+                    Height="64"
+                    Padding="0"
+                    HorizontalAlignment="Right"
+                    Margin="0,0,7,0"
+                    Command="{Binding BoostTemperatureCommand}"
+                    ToolTip="{Binding TemperatureBoostShortcutText, StringFormat=Temperature boost ({0})}">
+              <StackPanel>
+                <TextBlock Text="{Binding QuickTemperatureBoostText}"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="TEMP"
+                           FontSize="9"
+                           Foreground="{StaticResource MutedBrush}"
+                           HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+              <TextBlock Text="{Binding OperatingStateText}"
+                         Foreground="{DynamicResource AccentBrush}"
+                         FontSize="12"
+                         FontWeight="SemiBold"
+                         HorizontalAlignment="Center" />
+              <TextBlock Text="{Binding StatusText}"
+                         Foreground="{StaticResource MutedBrush}"
+                         FontSize="11"
+                         TextAlignment="Center"
+                         TextWrapping="Wrap"
+                         MaxWidth="154"
+                         Margin="0,4,0,0" />
+            </StackPanel>
+            <Button Grid.Column="2"
+                    AutomationProperties.AutomationId="TimeQuickHitButton"
+                    Width="64"
+                    Height="64"
+                    Padding="0"
+                    HorizontalAlignment="Left"
+                    Margin="7,0,0,0"
+                    Command="{Binding BoostTimeCommand}"
+                    ToolTip="{Binding TimeBoostShortcutText, StringFormat=Time boost ({0})}">
+              <StackPanel>
+                <TextBlock Text="{Binding QuickTimeBoostText}"
+                           FontSize="21"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="TIME"
+                           FontSize="9"
+                           Foreground="{StaticResource MutedBrush}"
+                           HorizontalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </Grid>
+        </Grid>
+
+        <ScrollViewer Visibility="{Binding ProfilesVisibility}"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Margin="28,8,28,12">
+          <StackPanel>
+            <TextBlock Text="PROFILES"
+                       FontSize="19"
+                       FontWeight="SemiBold" />
+            <TextBlock Text="Select a device slot, then adjust only what you need."
+                       Foreground="{StaticResource MutedBrush}"
+                       FontSize="10"
+                       Margin="0,5,0,9" />
+
+            <TextBlock Text="DEVICE PROFILES"
+                       FontSize="9"
+                       Foreground="{DynamicResource AccentBrush}"
+                       FontWeight="SemiBold" />
+            <Border Height="54"
+                    Background="#111319"
+                    CornerRadius="10"
+                    Padding="4"
+                    Margin="0,5,0,10">
+              <ListBox AutomationProperties.AutomationId="DeviceProfilesSelector"
+                       ItemsSource="{Binding DeviceProfiles}"
+                       SelectedItem="{Binding SelectedDeviceProfile}"
+                       IsEnabled="{Binding CanEditDevice}"
+                       Background="Transparent"
+                       BorderThickness="0"
+                       ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                       ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                       ScrollViewer.PanningMode="HorizontalOnly">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Width="78" Height="32">
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="7" />
+                      </Grid.RowDefinitions>
+                      <TextBlock Text="{Binding Name}"
+                                 FontSize="8"
+                                 FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis"
+                                 HorizontalAlignment="Center" />
+                      <Border Grid.Row="1" CornerRadius="3">
+                        <Border.Background>
+                          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="{Binding ColorOne}" Offset="0" />
+                            <GradientStop Color="{Binding ColorTwo}" Offset="0.34" />
+                            <GradientStop Color="{Binding ColorThree}" Offset="0.67" />
+                            <GradientStop Color="{Binding ColorFour}" Offset="1" />
+                          </LinearGradientBrush>
+                        </Border.Background>
+                      </Border>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Border>
+
+            <Grid Width="140"
+                  Height="140"
+                  Margin="0,0,0,12"
+                  HorizontalAlignment="Center">
+                <Viewbox Width="136" Height="136">
+                  <Canvas Width="226" Height="226">
+                    <Ellipse Width="226"
+                             Height="226"
+                             Fill="#171A20"
+                             Stroke="{Binding EditorColorDisplay}"
+                             StrokeThickness="3" />
+                    <Path Data="M 113,3 A 110,110 0 0 1 223,113"
+                          StrokeThickness="5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round">
+                      <Path.Stroke>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                          <GradientStop Color="{Binding EditorColorDisplay}" Offset="0" />
+                          <GradientStop Color="{Binding EditorColorTwoDisplay}" Offset="1" />
+                        </LinearGradientBrush>
+                      </Path.Stroke>
+                    </Path>
+                    <Path Data="M 223,113 A 110,110 0 0 1 113,223"
+                          StrokeThickness="5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round">
+                      <Path.Stroke>
+                        <LinearGradientBrush StartPoint="1,0" EndPoint="0,1">
+                          <GradientStop Color="{Binding EditorColorTwoDisplay}" Offset="0" />
+                          <GradientStop Color="{Binding EditorColorThreeDisplay}" Offset="1" />
+                        </LinearGradientBrush>
+                      </Path.Stroke>
+                    </Path>
+                    <Path Data="M 113,223 A 110,110 0 0 1 3,113"
+                          StrokeThickness="5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round">
+                      <Path.Stroke>
+                        <LinearGradientBrush StartPoint="1,1" EndPoint="0,0">
+                          <GradientStop Color="{Binding EditorColorThreeDisplay}" Offset="0" />
+                          <GradientStop Color="{Binding EditorColorFourDisplay}" Offset="1" />
+                        </LinearGradientBrush>
+                      </Path.Stroke>
+                    </Path>
+                    <Path Data="M 3,113 A 110,110 0 0 1 113,3"
+                          StrokeThickness="5"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round">
+                      <Path.Stroke>
+                        <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                          <GradientStop Color="{Binding EditorColorFourDisplay}" Offset="0" />
+                          <GradientStop Color="{Binding EditorColorDisplay}" Offset="1" />
+                        </LinearGradientBrush>
+                      </Path.Stroke>
+                    </Path>
+                    <Ellipse Width="202"
+                             Height="202"
+                             Canvas.Left="12"
+                             Canvas.Top="12"
+                             Stroke="{Binding EditorColorDisplay}"
+                             StrokeThickness="1"
+                             Opacity="0.25" />
+                  </Canvas>
+                </Viewbox>
+                <Grid Width="112" Height="118">
+                  <TextBox AutomationProperties.AutomationId="ProfileNameEditor"
+                           Text="{Binding EditorName, UpdateSourceTrigger=PropertyChanged}"
+                           MaxLength="31"
+                           Width="100"
+                           Height="24"
+                           Padding="0"
+                           Background="Transparent"
+                           BorderThickness="0"
+                           Foreground="{Binding EditorPaletteForegroundDisplay}"
+                           FontSize="10"
+                           FontWeight="SemiBold"
+                           TextAlignment="Center"
+                           HorizontalContentAlignment="Center"
+                           VerticalContentAlignment="Center"
+                           VerticalAlignment="Top"
+                           Margin="0,11,0,0" />
+                  <StackPanel VerticalAlignment="Center" Margin="0,8,0,0">
+                    <TextBlock Text="{Binding EditorTemperature, StringFormat={}{0:0}°}"
+                               FontSize="25"
+                               FontWeight="Light"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding TemperatureEditorLabel}"
+                               FontSize="6"
+                               Foreground="{StaticResource MutedBrush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,-3,0,2" />
+                    <TextBlock Text="{Binding EditorDurationSeconds, StringFormat={}{0:0} SEC}"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding ActiveProfilePositionText}"
+                             FontSize="6"
+                             Foreground="{StaticResource MutedBrush}"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Bottom"
+                             Margin="0,0,0,5" />
+                </Grid>
+            </Grid>
+
+            <TextBlock Text="VAPOR LEVEL" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+            <ComboBox ItemsSource="{Binding VaporLevels}"
+                      SelectedItem="{Binding EditorVapor}"
+                      ItemTemplate="{StaticResource DarkComboItemTemplate}"
+                      Margin="0,5,0,10" />
+
+            <Grid Margin="0,0,0,11">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="{Binding TemperatureEditorLabel}" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                <TextBox AutomationProperties.AutomationId="ProfileTemperatureEditor"
+                         Text="{Binding EditorTemperature, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,5,0,0" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Text="SESSION TIME SEC" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                <TextBox AutomationProperties.AutomationId="ProfileDurationEditor"
+                         Text="{Binding EditorDurationSeconds, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,5,0,0" />
+              </StackPanel>
+            </Grid>
+
+            <Grid Margin="0,0,0,11">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="{Binding BoostEditorLabel}" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                <TextBox Text="{Binding EditorBoostTemperature, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,5,0,0" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Text="TIME BOOST SEC" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                <TextBox Text="{Binding EditorBoostSeconds, UpdateSourceTrigger=PropertyChanged}"
+                         Margin="0,5,0,0" />
+              </StackPanel>
+            </Grid>
+
+            <Button AutomationProperties.AutomationId="ProfileColorSelectorButton"
+                    Command="{Binding ShowColorCommand}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0"
+                    Margin="0,0,0,11"
+                    ToolTip="Open the color profile selector">
+              <Grid Width="385">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="18" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="{Binding CurrentColorProfileName}"
+                           FontSize="9"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"
+                           HorizontalAlignment="Center"
+                           Margin="20,0,20,5" />
+                <TextBlock Text="›"
+                           FontSize="18"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Top"
+                           Margin="0,-5,2,0" />
+                <Border Grid.Row="1" CornerRadius="9">
+                  <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                      <GradientStop Color="{Binding EditorColorDisplay}" Offset="0" />
+                      <GradientStop Color="{Binding EditorColorTwoDisplay}" Offset="0.34" />
+                      <GradientStop Color="{Binding EditorColorThreeDisplay}" Offset="0.67" />
+                      <GradientStop Color="{Binding EditorColorFourDisplay}" Offset="1" />
+                    </LinearGradientBrush>
+                  </Border.Background>
+                </Border>
+              </Grid>
+            </Button>
+
+            <TextBlock Text="PROFILE MACRO"
+                       FontSize="9"
+                       Foreground="{StaticResource MutedBrush}" />
+            <Grid Margin="0,5,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <ComboBox ItemsSource="{Binding ProfileMacroOptions}"
+                        ItemTemplate="{StaticResource ShortcutOptionTemplate}"
+                        SelectedValuePath="Value"
+                        SelectedValue="{Binding EditorProfileMacroKey}" />
+              <Button Grid.Column="2"
+                      Content="SAVE MACRO"
+                      Command="{Binding SavePreferencesCommand}"
+                      Padding="12,7" />
+            </Grid>
+            <TextBlock Text="Selects this profile from Home while idle; it never starts heat."
+                       Foreground="{StaticResource MutedBrush}"
+                       FontSize="8"
+                       TextWrapping="Wrap"
+                       Margin="0,5,0,10" />
+
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="2*" />
+              </Grid.ColumnDefinitions>
+              <Button AutomationProperties.AutomationId="QuickSaveHeatingProfileButton"
+                      Content="SAVE HEAT JSON"
+                      Command="{Binding SaveHeatingProfileCommand}"
+                      Background="{DynamicResource AccentBrush}"
+                      Foreground="{DynamicResource AccentForegroundBrush}"
+                      BorderBrush="{DynamicResource AccentBrush}" />
+              <Button Grid.Column="2"
+                      Content="WRITE PROFILE"
+                      Command="{Binding SaveProfileCommand}" />
+            </Grid>
+            <TextBlock Text="Local saves never heat or write; Write Profile remains firmware-gated."
+                       Foreground="{StaticResource MutedBrush}"
+                       FontSize="9"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="12,10,12,0" />
+
+            <Grid Margin="0,18,0,0">
+              <TextBlock Text="LOCAL PAIRED PROFILES"
+                         FontSize="9"
+                         Foreground="{DynamicResource AccentBrush}"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center" />
+              <Button Content="REFRESH JSON"
+                      Command="{Binding ReloadLocalProfilesCommand}"
+                      HorizontalAlignment="Right"
+                      Padding="10,5"
+                      FontSize="8" />
+            </Grid>
+            <TextBlock Text="Each heating profile is a JSON file with its selected colorway; loading never writes to the device."
+                       FontSize="9"
+                       Foreground="{StaticResource MutedBrush}"
+                       TextWrapping="Wrap"
+                       Margin="0,4,0,7" />
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBox AutomationProperties.AutomationId="HeatingProfileNameEditor"
+                       Text="{Binding HeatingProfileName, UpdateSourceTrigger=PropertyChanged}"
+                       MaxLength="64" />
+              <Button Grid.Column="2"
+                      AutomationProperties.AutomationId="SaveHeatingProfileButton"
+                      Content="SAVE JSON"
+                      Command="{Binding SaveHeatingProfileCommand}"
+                      Padding="12,7" />
+            </Grid>
+            <Grid Margin="0,0,0,7">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Button AutomationProperties.AutomationId="ApplyHeatingProfileButton"
+                      Content="USE PROFILE"
+                      Command="{Binding ApplyHeatingProfileCommand}" />
+              <Button Grid.Column="2"
+                      Content="DELETE PROFILE"
+                      Command="{Binding DeleteHeatingProfileCommand}"
+                      Foreground="#FF8D95" />
+            </Grid>
+            <Border Height="64"
+                    Background="#111319"
+                    CornerRadius="10"
+                    Padding="4"
+                    Margin="0,0,0,8">
+              <ListBox AutomationProperties.AutomationId="SavedHeatingProfilesSelector"
+                       ItemsSource="{Binding SavedHeatingProfiles}"
+                       SelectedItem="{Binding SelectedSavedHeatingProfile}"
+                       Background="Transparent"
+                       BorderThickness="0"
+                       ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                       ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                       ScrollViewer.PanningMode="HorizontalOnly">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Width="154" Height="42">
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="7" />
+                      </Grid.RowDefinitions>
+                      <TextBlock Text="{Binding Name}"
+                                 FontSize="9"
+                                 FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Row="1"
+                                 Text="{Binding DetailText}"
+                                 FontSize="7"
+                                 Foreground="{StaticResource MutedBrush}"
+                                 TextTrimming="CharacterEllipsis"
+                                 Margin="0,1,0,3" />
+                      <Border Grid.Row="2" CornerRadius="3">
+                        <Border.Background>
+                          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="{Binding ColorOne}" Offset="0" />
+                            <GradientStop Color="{Binding ColorTwo}" Offset="0.34" />
+                            <GradientStop Color="{Binding ColorThree}" Offset="0.67" />
+                            <GradientStop Color="{Binding ColorFour}" Offset="1" />
+                          </LinearGradientBrush>
+                        </Border.Background>
+                      </Border>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <ScrollViewer Visibility="{Binding ColorVisibility}"
+                      VerticalScrollBarVisibility="Hidden"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Margin="28,8,28,12">
+          <StackPanel>
+            <TextBlock Text="{Binding EditorName}"
+                       FontSize="19"
+                       FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis"
+                       Margin="0,0,0,6" />
+
+            <Border Height="18"
+                    CornerRadius="9"
+                    Margin="0,0,0,8">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                  <GradientStop Color="{Binding EditorColorDisplay}" Offset="0" />
+                  <GradientStop Color="{Binding EditorColorTwoDisplay}" Offset="0.34" />
+                  <GradientStop Color="{Binding EditorColorThreeDisplay}" Offset="0.67" />
+                  <GradientStop Color="{Binding EditorColorFourDisplay}" Offset="1" />
+                </LinearGradientBrush>
+              </Border.Background>
+            </Border>
+
+            <Grid Height="166">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="48" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="48" />
+              </Grid.ColumnDefinitions>
+              <Button Grid.Column="0"
+                      Content="‹"
+                      Command="{Binding PreviousColorStopCommand}"
+                      Width="40"
+                      Height="52"
+                      Padding="0"
+                      FontSize="25"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      VerticalAlignment="Center"
+                      ToolTip="Previous color in this colorway" />
+              <controls:ColorWheelPicker Grid.Column="1"
+                                         Width="142"
+                                         Height="160"
+                                         HorizontalAlignment="Center"
+                                         SelectedColor="{Binding WheelColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+              <Button Grid.Column="2"
+                      Content="›"
+                      Command="{Binding NextColorStopCommand}"
+                      Width="40"
+                      Height="52"
+                      Padding="0"
+                      FontSize="25"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      VerticalAlignment="Center"
+                      ToolTip="Next color in this colorway" />
+            </Grid>
+
+            <Grid Margin="0,1,0,8">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Button Content="REMOVE"
+                      Command="{Binding RemoveColorStopCommand}"
+                      HorizontalAlignment="Right"
+                      Padding="12,6"
+                      Margin="0,0,12,0" />
+              <TextBlock Grid.Column="1"
+                         Text="{Binding ColorStopPositionText}"
+                         FontSize="9"
+                         FontWeight="SemiBold"
+                         Foreground="{DynamicResource AccentBrush}"
+                         VerticalAlignment="Center" />
+              <Button Grid.Column="2"
+                      Content="ADD"
+                      Command="{Binding AddColorStopCommand}"
+                      HorizontalAlignment="Left"
+                      Padding="12,6"
+                      Margin="12,0,0,0" />
+            </Grid>
+
+            <Grid Margin="0,0,0,10">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="2*" />
+              </Grid.ColumnDefinitions>
+              <Button AutomationProperties.AutomationId="UseColorWithHeatingProfileButton"
+                      Content="USE WITH HEAT PROFILE"
+                      Command="{Binding UseColorWithHeatingProfileCommand}"
+                      Background="{DynamicResource AccentBrush}"
+                      Foreground="{DynamicResource AccentForegroundBrush}"
+                      BorderBrush="{DynamicResource AccentBrush}" />
+              <Button Grid.Column="2"
+                      AutomationProperties.AutomationId="SaveProfileColorButton"
+                      Content="WRITE PROFILE"
+                      Command="{Binding SaveProfileCommand}" />
+            </Grid>
+
+            <Grid Margin="0,0,0,6">
+              <TextBlock Text="COLOR PROFILES"
+                         FontSize="9"
+                         Foreground="{DynamicResource AccentBrush}"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center" />
+              <Button Content="REFRESH JSON"
+                      Command="{Binding ReloadLocalProfilesCommand}"
+                      HorizontalAlignment="Right"
+                      Padding="10,5"
+                      FontSize="8" />
+            </Grid>
+            <Grid Margin="0,0,0,6">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBox AutomationProperties.AutomationId="PaletteNameEditor"
+                       Text="{Binding PaletteName, UpdateSourceTrigger=PropertyChanged}"
+                       MaxLength="64" />
+              <Button Grid.Column="2"
+                      AutomationProperties.AutomationId="SaveColorPaletteButton"
+                      Content="SAVE JSON"
+                      Command="{Binding SaveColorPaletteCommand}"
+                      Padding="12,7" />
+            </Grid>
+
+            <Grid Margin="0,0,0,6">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Button AutomationProperties.AutomationId="ApplyColorPaletteButton"
+                      Content="USE PROFILE"
+                      Command="{Binding ApplyColorPaletteCommand}" />
+              <Button Grid.Column="2"
+                      Content="DELETE PROFILE"
+                      Command="{Binding DeleteColorPaletteCommand}"
+                      Foreground="#FF8D95" />
+            </Grid>
+
+            <Border Height="70"
+                    Background="#111319"
+                    CornerRadius="10"
+                    Padding="4"
+                    Margin="0,0,0,6">
+              <ListBox AutomationProperties.AutomationId="SavedColorProfilesSelector"
+                       ItemsSource="{Binding SavedColorPalettes}"
+                       SelectedItem="{Binding SelectedSavedColorPalette}"
+                       Background="Transparent"
+                       BorderThickness="0"
+                       ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                       ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                       ScrollViewer.PanningMode="HorizontalOnly">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Width="138" Height="46">
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="12" />
+                      </Grid.RowDefinitions>
+                      <TextBlock Text="{Binding Name}"
+                                 FontSize="9"
+                                 FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis"
+                                 VerticalAlignment="Top" />
+                      <Border Grid.Row="1" CornerRadius="5">
+                        <Border.Background>
+                          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="{Binding ColorOne}" Offset="0" />
+                            <GradientStop Color="{Binding ColorTwo}" Offset="0.34" />
+                            <GradientStop Color="{Binding ColorThree}" Offset="0.67" />
+                            <GradientStop Color="{Binding ColorFour}" Offset="1" />
+                          </LinearGradientBrush>
+                        </Border.Background>
+                      </Border>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Border>
+
+          </StackPanel>
+        </ScrollViewer>
+
+        <ScrollViewer Visibility="{Binding SettingsVisibility}"
+                      VerticalScrollBarVisibility="Auto"
+                      Margin="28,8,28,18">
+          <StackPanel>
+            <TextBlock Text="DEVICE &amp; SAFETY"
+                       FontSize="19"
+                       FontWeight="SemiBold" />
+            <TextBlock Text="Local controls, no account or cloud connection."
+                       Foreground="{StaticResource MutedBrush}"
+                       FontSize="10"
+                       Margin="0,5,0,18" />
+
+            <Border Background="#171D1C"
+                    BorderBrush="#30443F"
+                    BorderThickness="1"
+                    CornerRadius="14"
+                    Padding="14"
+                    Margin="0,0,0,14">
+              <StackPanel>
+                <TextBlock Text="SAFETY STATUS"
+                           FontSize="9"
+                           Foreground="{DynamicResource AccentBrush}"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="{Binding SafetyText}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,7,0,0" />
+              </StackPanel>
+            </Border>
+
+            <Border Background="{StaticResource PanelBrush}"
+                    BorderBrush="#292D36"
+                    BorderThickness="1"
+                    CornerRadius="14"
+                    Padding="14"
+                    Margin="0,0,0,14">
+              <StackPanel>
+                <TextBlock Text="CONNECTED DEVICE" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="{Binding DeviceName}" FontSize="14" FontWeight="SemiBold" Margin="0,5,0,0" />
+                <TextBlock Text="{Binding FirmwareText}" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0" />
+              </StackPanel>
+            </Border>
+
+            <Border Background="{StaticResource PanelBrush}"
+                    BorderBrush="#292D36"
+                    BorderThickness="1"
+                    CornerRadius="14"
+                    Padding="14"
+                    Margin="0,0,0,14">
+              <StackPanel>
+                <TextBlock Text="APP ACCENT"
+                           FontSize="9"
+                           Foreground="{DynamicResource AccentBrush}"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="Enter any six-digit RGB hex color. Valid colors preview immediately and save locally."
+                           FontSize="10"
+                           Foreground="{StaticResource MutedBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,5,0,9" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="34" />
+                    <ColumnDefinition Width="9" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="9" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <Border Width="34"
+                          Height="32"
+                          Background="{DynamicResource AccentBrush}"
+                          CornerRadius="6" />
+                  <TextBox Grid.Column="2"
+                           AutomationProperties.AutomationId="AccentHexEditor"
+                           Text="{Binding AppAccentHex, UpdateSourceTrigger=PropertyChanged}"
+                           MaxLength="7"
+                           CharacterCasing="Upper" />
+                  <Button Grid.Column="4"
+                          AutomationProperties.AutomationId="SaveAccentButton"
+                          Content="SAVE"
+                          Command="{Binding SavePreferencesCommand}"
+                          Padding="13,7" />
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <Border Background="{StaticResource PanelBrush}"
+                    BorderBrush="#292D36"
+                    BorderThickness="1"
+                    CornerRadius="14"
+                    Padding="14"
+                    Margin="0,0,0,14">
+              <StackPanel>
+                <TextBlock Text="KEYBINDS"
+                           FontSize="9"
+                           Foreground="{DynamicResource AccentBrush}"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="Shortcuts operate only from Home. Boost keys remain locked until the session is active."
+                           FontSize="10"
+                           Foreground="{StaticResource MutedBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,5,0,10" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0">
+                    <TextBlock Text="PREVIOUS PROFILE" FontSize="8" Foreground="{StaticResource MutedBrush}" />
+                    <ComboBox ItemsSource="{Binding ShortcutOptions}"
+                              ItemTemplate="{StaticResource ShortcutOptionTemplate}"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding PreviousProfileKey}"
+                              Margin="0,4,0,9" />
+                    <TextBlock Text="TEMP QUICK HIT" FontSize="8" Foreground="{StaticResource MutedBrush}" />
+                    <ComboBox ItemsSource="{Binding ShortcutOptions}"
+                              ItemTemplate="{StaticResource ShortcutOptionTemplate}"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding TemperatureBoostKey}"
+                              Margin="0,4,0,0" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Text="NEXT PROFILE" FontSize="8" Foreground="{StaticResource MutedBrush}" />
+                    <ComboBox ItemsSource="{Binding ShortcutOptions}"
+                              ItemTemplate="{StaticResource ShortcutOptionTemplate}"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding NextProfileKey}"
+                              Margin="0,4,0,9" />
+                    <TextBlock Text="TIME QUICK HIT" FontSize="8" Foreground="{StaticResource MutedBrush}" />
+                    <ComboBox ItemsSource="{Binding ShortcutOptions}"
+                              ItemTemplate="{StaticResource ShortcutOptionTemplate}"
+                              SelectedValuePath="Value"
+                              SelectedValue="{Binding TimeBoostKey}"
+                              Margin="0,4,0,0" />
+                  </StackPanel>
+                </Grid>
+                <Border Height="1" Background="#30343D" Margin="0,13,0,11" />
+                <TextBlock Text="QUICK HIT AMOUNTS"
+                           FontSize="9"
+                           Foreground="{DynamicResource AccentBrush}"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,8" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Grid.Column="0">
+                    <TextBlock Text="{Binding QuickHitTemperatureLabel}"
+                               FontSize="8"
+                               Foreground="{StaticResource MutedBrush}" />
+                    <TextBox Text="{Binding QuickHitTemperature, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,4,0,0" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Text="TIME INCREASE SEC"
+                               FontSize="8"
+                               Foreground="{StaticResource MutedBrush}" />
+                    <TextBox Text="{Binding QuickHitTimeSeconds, UpdateSourceTrigger=PropertyChanged}"
+                             Margin="0,4,0,0" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="Saved values are checked against the connected device limits again on every quick hit."
+                           FontSize="9"
+                           Foreground="{StaticResource MutedBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,8,0,0" />
+                <Button Content="SAVE CONTROL SETTINGS"
+                        Command="{Binding SavePreferencesCommand}"
+                        Margin="0,11,0,0" />
+              </StackPanel>
+            </Border>
+
+            <Border Background="#171D1C"
+                    BorderBrush="#40574F"
+                    BorderThickness="1"
+                    CornerRadius="14"
+                    Padding="14"
+                    Margin="0,0,0,14">
+              <StackPanel>
+                <TextBlock Text="SAFE E-RIG HANDOFF"
+                           FontSize="9"
+                           Foreground="{DynamicResource AccentBrush}"
+                           FontWeight="SemiBold" />
+                <TextBlock Text="Finds nearby Peak e-rigs only. Handoff is blocked during heat, releases the current base first, and requires normal Windows pairing plus Puffco authentication. It cannot seize a device from another connection."
+                           FontSize="10"
+                           Foreground="{StaticResource MutedBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,10" />
+                <Button AutomationProperties.AutomationId="HotSwapScanButton"
+                        Content="FIND NEARBY E-RIGS"
+                        Command="{Binding HotSwapScanCommand}"
+                        Margin="0,0,0,8" />
+                <ComboBox ItemsSource="{Binding HotSwapCandidates}"
+                          SelectedItem="{Binding SelectedHotSwapCandidate}"
+                          Margin="0,0,0,8">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextBrush}" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding SignalStrength, StringFormat={}{0} dBm}"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   Margin="8,0,0,0" />
+                      </Grid>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Button AutomationProperties.AutomationId="HotSwapConnectButton"
+                        Content="HAND OFF TO SELECTED E-RIG"
+                        Command="{Binding HotSwapConnectCommand}"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="{DynamicResource AccentForegroundBrush}"
+                        BorderBrush="{DynamicResource AccentBrush}" />
+              </StackPanel>
+            </Border>
+
+            <Button Content="{Binding TemperatureUnitText}"
+                    Command="{Binding ToggleTemperatureUnitCommand}"
+                    Margin="0,0,0,10" />
+            <Button Content="{Binding StealthButtonText}"
+                    Command="{Binding ToggleStealthCommand}"
+                    Margin="0,0,0,10" />
+            <Button Content="{Binding LanternButtonText}"
+                    Command="{Binding ToggleLanternCommand}"
+                    Margin="0,0,0,10" />
+            <Button Content="DISCONNECT DEVICE"
+                    Command="{Binding DisconnectCommand}"
+                    Foreground="#FF8D95"
+                    Margin="0,10,0,0" />
+
+            <TextBlock Text="desk_Puff never exposes firmware, bootloader, reset, raw-command, or arbitrary-file controls."
+                       Foreground="{StaticResource MutedBrush}"
+                       FontSize="9"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="20,18,20,0" />
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <Border Grid.Row="2"
+              Visibility="{Binding DeviceVisibility}"
+              BorderBrush="#22252C"
+              BorderThickness="0,1,0,0"
+              CornerRadius="0,0,20,20"
+              Background="#101217">
+        <Grid Margin="16,8,16,9">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Button Grid.Column="0"
+                  AutomationProperties.AutomationId="ProfilesNavButton"
+                  Command="{Binding ShowProfilesCommand}"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Padding="6">
+            <StackPanel>
+              <TextBlock Text="≡" FontSize="25" HorizontalAlignment="Center" />
+              <TextBlock Text="PROFILES" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="1"
+                  Command="{Binding ShowHomeCommand}"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Padding="6">
+            <StackPanel>
+              <TextBlock Text="●" FontSize="20" HorizontalAlignment="Center" />
+              <TextBlock Text="HOME" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="2"
+                  AutomationProperties.AutomationId="ColorNavButton"
+                  Command="{Binding ShowColorCommand}"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Padding="6">
+            <StackPanel>
+              <Ellipse Width="24" Height="24">
+                <Ellipse.Fill>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#F80B00" Offset="0" />
+                    <GradientStop Color="#6EE916" Offset="0.35" />
+                    <GradientStop Color="#2878FF" Offset="0.7" />
+                    <GradientStop Color="#E84DFF" Offset="1" />
+                  </LinearGradientBrush>
+                </Ellipse.Fill>
+              </Ellipse>
+              <TextBlock Text="COLOR" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
+            </StackPanel>
+          </Button>
+        </Grid>
+      </Border>
+      </Grid>
+    </Viewbox>
+  </Border>
+</Window>

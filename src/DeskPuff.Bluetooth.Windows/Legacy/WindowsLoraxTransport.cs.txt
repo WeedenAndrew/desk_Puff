@@ -1,0 +1,310 @@
+using System.Collections.Concurrent;
+using System.Runtime.Versioning;
+using DeskPuff.Bluetooth.Windows.Protocol;
+using DeskPuff.Core.Devices;
+using Windows.Devices.Bluetooth;
+using Windows.Devices.Bluetooth.Advertisement;
+using Windows.Devices.Bluetooth.GenericAttributeProfile;
+using Windows.Devices.Enumeration;
+using Windows.Storage.Streams;
+
+namespace DeskPuff.Bluetooth.Windows.Transport;
+
+[SupportedOSPlatform("windows10.0.19041.0")]
+internal sealed class WindowsLoraxTransport : ILoraxTransport
+{
+    private readonly ConcurrentDictionary<ushort, TaskCompletionSource<LoraxReply>> pendingReplies = new();
+    private readonly SemaphoreSlim commandGate = new(1, 1);
+    private BluetoothLEDevice? device;
+    private GattDeviceService? service;
+    private GattCharacteristic? versionCharacteristic;
+    private GattCharacteristic? commandCharacteristic;
+    private GattCharacteristic? replyCharacteristic;
+    private ushort nextSequence;
+    private bool disposed;
+
+    public bool IsConnected =>
+        device?.ConnectionStatus == BluetoothConnectionStatus.Connected &&
+        commandCharacteristic is not null &&
+        replyCharacteristic is not null;
+
+    public string AdvertisedName { get; private set; } = string.Empty;
+
+    public async Task<IReadOnlyList<DeviceCandidate>> ScanAsync(
+        TimeSpan duration,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (duration <= TimeSpan.Zero || duration > TimeSpan.FromSeconds(30))
+        {
+            throw new ArgumentOutOfRangeException(nameof(duration));
+        }
+
+        ConcurrentDictionary<ulong, DeviceCandidate> candidates = new();
+        BluetoothLEAdvertisementWatcher watcher = new()
+        {
+            ScanningMode = BluetoothLEScanningMode.Active,
+        };
+
+        void Received(BluetoothLEAdvertisementWatcher _, BluetoothLEAdvertisementReceivedEventArgs args)
+        {
+            string name = args.Advertisement.LocalName ?? string.Empty;
+            bool knownService = args.Advertisement.ServiceUuids.Contains(LoraxProtocol.ServiceId);
+            bool knownName = IsPuffcoName(name);
+            if (!knownService && !knownName)
+            {
+                return;
+            }
+
+            candidates.AddOrUpdate(
+                args.BluetoothAddress,
+                _ => new DeviceCandidate(args.BluetoothAddress, name, args.RawSignalStrengthInDBm),
+                (_, current) => new DeviceCandidate(
+                    current.BluetoothAddress,
+                    string.IsNullOrWhiteSpace(name) ? current.Name : name,
+                    args.RawSignalStrengthInDBm));
+        }
+
+        watcher.Received += Received;
+        watcher.Start();
+        try
+        {
+            await Task.Delay(duration, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            watcher.Stop();
+            watcher.Received -= Received;
+        }
+
+        return candidates.Values
+            .OrderByDescending(candidate => candidate.SignalStrength)
+            .ToArray();
+    }
+
+    public async Task ConnectAsync(DeviceCandidate candidate, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        await DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        device = await BluetoothLEDevice
+            .FromBluetoothAddressAsync(candidate.BluetoothAddress);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (device is null)
+        {
+            throw new IOException("Windows could not open the selected Bluetooth LE device.");
+        }
+
+        AdvertisedName = string.IsNullOrWhiteSpace(candidate.Name) ? device.Name : candidate.Name;
+        await EnsurePairedAsync(device, cancellationToken).ConfigureAwait(false);
+
+        GattDeviceServicesResult services = await device.GetGattServicesForUuidAsync(
+            LoraxProtocol.ServiceId,
+            BluetoothCacheMode.Uncached);
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureSuccess(services.Status, "discover the Lorax service");
+
+        service = services.Services.SingleOrDefault()
+            ?? throw new IOException("The device does not expose the expected Lorax service.");
+        versionCharacteristic = await GetCharacteristicAsync(
+            service,
+            LoraxProtocol.VersionCharacteristicId,
+            cancellationToken).ConfigureAwait(false);
+        commandCharacteristic = await GetCharacteristicAsync(
+            service,
+            LoraxProtocol.CommandCharacteristicId,
+            cancellationToken).ConfigureAwait(false);
+        replyCharacteristic = await GetCharacteristicAsync(
+            service,
+            LoraxProtocol.ReplyCharacteristicId,
+            cancellationToken).ConfigureAwait(false);
+
+        replyCharacteristic.ValueChanged += ReplyCharacteristicOnValueChanged;
+        GattCommunicationStatus notifyStatus =
+            await replyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(
+                GattClientCharacteristicConfigurationDescriptorValue.Notify);
+        EnsureSuccess(notifyStatus, "enable Lorax replies");
+    }
+
+    public async Task DisconnectAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        foreach (TaskCompletionSource<LoraxReply> reply in pendingReplies.Values)
+        {
+            reply.TrySetException(new IOException("The Bluetooth device disconnected."));
+        }
+
+        pendingReplies.Clear();
+        if (replyCharacteristic is not null)
+        {
+            replyCharacteristic.ValueChanged -= ReplyCharacteristicOnValueChanged;
+            try
+            {
+                await replyCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(
+                    GattClientCharacteristicConfigurationDescriptorValue.None);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // Disconnect must remain best-effort and must never send a device command.
+            }
+        }
+
+        replyCharacteristic = null;
+        commandCharacteristic = null;
+        versionCharacteristic = null;
+        service?.Dispose();
+        service = null;
+        device?.Dispose();
+        device = null;
+        AdvertisedName = string.Empty;
+    }
+
+    public async Task TriggerBondingAsync(CancellationToken cancellationToken)
+    {
+        GattCharacteristic characteristic = versionCharacteristic
+            ?? throw new InvalidOperationException("The Lorax version characteristic is unavailable.");
+        cancellationToken.ThrowIfCancellationRequested();
+        GattReadResult result = await characteristic.ReadValueAsync(BluetoothCacheMode.Uncached);
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureSuccess(result.Status, "read the Lorax version");
+    }
+
+    public async Task<ReadOnlyMemory<byte>> RunCommandAsync(
+        LoraxOpcode opcode,
+        ReadOnlyMemory<byte> body,
+        int maximumReplyLength,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (!IsConnected || commandCharacteristic is null)
+        {
+            throw new IOException("The Lorax transport is not connected.");
+        }
+
+        if (maximumReplyLength is < 0 or > 1024)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maximumReplyLength));
+        }
+
+        await commandGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ushort sequence = nextSequence++;
+        TaskCompletionSource<LoraxReply> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!pendingReplies.TryAdd(sequence, completion))
+        {
+            commandGate.Release();
+            throw new InvalidOperationException("Lorax sequence collision.");
+        }
+
+        try
+        {
+            byte[] frame = LoraxProtocol.BuildFrame(sequence, opcode, body.Span);
+            using DataWriter writer = new();
+            writer.WriteBytes(frame);
+            GattWriteResult writeResult = await commandCharacteristic.WriteValueWithResultAsync(
+                writer.DetachBuffer(),
+                GattWriteOption.WriteWithoutResponse);
+            EnsureSuccess(writeResult.Status, "write a Lorax command");
+
+            LoraxReply reply = await completion.Task
+                .WaitAsync(TimeSpan.FromSeconds(3), cancellationToken)
+                .ConfigureAwait(false);
+            if (reply.Payload.Length > maximumReplyLength)
+            {
+                throw new InvalidDataException("Lorax reply exceeded its expected maximum size.");
+            }
+
+            return reply.Payload;
+        }
+        finally
+        {
+            pendingReplies.TryRemove(sequence, out _);
+            commandGate.Release();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        await DisconnectAsync(CancellationToken.None).ConfigureAwait(false);
+        commandGate.Dispose();
+        disposed = true;
+    }
+
+    private static bool IsPuffcoName(string name) =>
+        name.Contains("PUFFCO", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("PEAK", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("PROXY", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task EnsurePairedAsync(
+        BluetoothLEDevice bluetoothDevice,
+        CancellationToken cancellationToken)
+    {
+        if (bluetoothDevice.DeviceInformation.Pairing.IsPaired)
+        {
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        DevicePairingResult result = await bluetoothDevice.DeviceInformation.Pairing.PairAsync(
+            DevicePairingProtectionLevel.Encryption);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (result.Status is not (DevicePairingResultStatus.Paired or DevicePairingResultStatus.AlreadyPaired))
+        {
+            throw new IOException($"Windows pairing failed with status {result.Status}.");
+        }
+    }
+
+    private static async Task<GattCharacteristic> GetCharacteristicAsync(
+        GattDeviceService gattService,
+        Guid characteristicId,
+        CancellationToken cancellationToken)
+    {
+        GattCharacteristicsResult result = await gattService.GetCharacteristicsForUuidAsync(
+            characteristicId,
+            BluetoothCacheMode.Uncached);
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureSuccess(result.Status, $"discover characteristic {characteristicId}");
+        return result.Characteristics.SingleOrDefault()
+            ?? throw new IOException($"Required characteristic {characteristicId} is missing.");
+    }
+
+    private static void EnsureSuccess(GattCommunicationStatus status, string operation)
+    {
+        if (status != GattCommunicationStatus.Success)
+        {
+            throw new IOException($"Bluetooth could not {operation}: {status}.");
+        }
+    }
+
+    private void ReplyCharacteristicOnValueChanged(
+        GattCharacteristic _,
+        GattValueChangedEventArgs args)
+    {
+        try
+        {
+            using DataReader reader = DataReader.FromBuffer(args.CharacteristicValue);
+            byte[] bytes = new byte[reader.UnconsumedBufferLength];
+            reader.ReadBytes(bytes);
+            LoraxReply reply = LoraxProtocol.ParseReply(bytes);
+            if (pendingReplies.TryGetValue(reply.Sequence, out TaskCompletionSource<LoraxReply>? completion))
+            {
+                completion.TrySetResult(reply);
+            }
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            foreach (TaskCompletionSource<LoraxReply> pending in pendingReplies.Values)
+            {
+                pending.TrySetException(new InvalidDataException("Malformed Lorax reply.", exception));
+            }
+        }
+    }
+}
