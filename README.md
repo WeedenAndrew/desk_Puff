@@ -29,10 +29,14 @@ selection and editing, colorways, start and stop, quick hits, running a saved
 profile for one session, and device handoff — all without opening Bluetooth or
 touching hardware.
 
+| Profiles | Color | Settings |
+|---|---|---|
+| ![The Profiles page](docs/media/profiles.png) | ![The Color page](docs/media/color.png) | ![The Settings page](docs/media/settings.png) |
+
 Profiles come in two kinds. The device's four slots behave as they always have.
 Saved local profiles are JSON files that apply their parameters to a **single
 session** and are dropped when it ends; selecting one writes nothing to a slot,
-and the display says **SAVED PROFILE · NOT ON DEVICE** so it can never be
+and the display says **SAVED PROFILE • NOT ON DEVICE** so it can never be
 mistaken for the device's own state.
 
 > [!IMPORTANT]
