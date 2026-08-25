@@ -6,6 +6,9 @@
 - Bluetooth pairing state and device identifiers are private local data.
 - The Windows host, Puffco firmware, and public protocol research are separate
   trust boundaries. Device firmware remains authoritative for heater control.
+- **The `desk-puff-ble` sidecar is a separate process and a trust boundary.**
+  It is the only component that opens Bluetooth. It is launched from a fixed
+  path beneath the application directory and spoken to over stdin/stdout.
 
 ## Addressed risks
 
@@ -21,7 +24,8 @@
 | Malformed or hostile local profile JSON affects the app/device | Separate 16 KiB-capped documents, schema and value validation, traversal-safe filenames, reparse-point rejection, atomic saves, malformed-file isolation, and a separate safety-gated device-write action |
 | Repeated boosts run without bound | Device limit capped again at four boosts per session |
 | User-configured quick hit exceeds safe limits | Save-time validation plus per-command amount, cumulative temperature, and cumulative duration checks |
-| Personal device data is collected | No cloud, analytics, account, serial-number read, or address log |
+| Personal device data is collected | No cloud, analytics, account, serial-number read, or address log. Held by absence of a call: reads are not allowlisted, only writes are |
+| A substituted helper binary is launched | Fixed path under the application directory; `PATH`, working directory, and environment are not consulted |
 | Handoff targets the wrong Bluetooth product | Heating-state gate, Peak-name candidate filter, normal pairing/authentication, and post-connect Peak Pro identity check |
 | Handoff interrupts another controller | No forced takeover; Windows Bluetooth exclusivity is respected and the connection fails closed |
 | Dependency or CI action drifts | Central versions, lock files, NuGet audit, and SHA-pinned actions |

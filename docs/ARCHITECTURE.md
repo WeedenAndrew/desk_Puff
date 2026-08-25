@@ -4,10 +4,32 @@ The codebase has three production layers:
 
 - `DeskPuff.Core`: immutable models, typed device operations, safety policy, and
   the session state machine. It has no Windows or Bluetooth dependency.
-- `DeskPuff.Bluetooth.Windows`: Windows BLE transport and the Lorax protocol.
-  Low-level writes are internal and restricted by an exact path allowlist.
-- `DeskPuff.App`: compact WPF interface. It can request only typed operations
-  from `IDeviceClient`.
+- `DeskPuff.Bluetooth.Windows`: the Lorax protocol and the transport that
+  carries it. Low-level writes are internal and restricted by an exact path
+  allowlist. It does not open Bluetooth itself; see the sidecar below.
+- `DeskPuff.App`: compact Avalonia interface. It can request only typed
+  operations from `IDeviceClient`.
+
+## The Bluetooth sidecar
+
+Bluetooth is not opened in process. `SidecarLoraxTransport` launches a separate
+Rust executable, `desk-puff-ble`, and speaks a line-oriented JSON protocol to it
+over stdin and stdout, with binary payloads base64-encoded. The Rust side uses
+`btleplug` and is built with `panic = "abort"`.
+
+The helper is located at `AppContext.BaseDirectory/ble/desk-puff-ble[.exe]`.
+Resolution deliberately does not consult `PATH`, the working directory, or an
+environment variable, so the binary cannot be substituted by altering the
+caller's environment.
+
+**This process boundary is a trust boundary and belongs in
+[THREAT_MODEL.md](THREAT_MODEL.md).** It is not listed there yet.
+
+> **Not yet buildable.** Nothing in CI, MSBuild, or the publish profile compiles
+> `native/desk-puff-ble` or stages it into `ble/`. `HelperPath()` is the only
+> reference to that directory in the repository. A published build therefore has
+> no helper and fails at the `File.Exists` check on the first real connection
+> attempt; only `--demo` runs. Closing this is Milestone 0.
 
 Tests mirror the production layers. The UI includes a deterministic demo client
 for development without hardware; demo mode is visually marked and cannot open
@@ -39,6 +61,11 @@ production API for arbitrary paths.
 Device identity is read once per connection. Changing heater telemetry is read
 on the UI cadence; battery telemetry is cached for ten seconds. Serial numbers
 are not requested, stored, displayed, or logged.
+
+That last property is currently held by there being no such call, not by a gate.
+`BuildWriteBody` refuses any path outside `LoraxPaths.IsWriteAllowed`;
+`BuildReadBody` performs only a format check, so reads are not allowlisted. A
+read allowlist would make the privacy claim structural rather than incidental.
 
 Profile lighting is stored by the device as CBOR rather than a plain RGB value.
 The Windows client uses bounded 125-byte reads, accepts only the expected nested

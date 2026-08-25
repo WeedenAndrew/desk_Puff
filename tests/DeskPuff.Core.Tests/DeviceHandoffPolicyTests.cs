@@ -26,9 +26,9 @@ public sealed class DeviceHandoffPolicyTests
     [TestMethod]
     public void Candidate_RejectsProxyAndNonErigNames()
     {
-        Assert.IsFalse(DeviceHandoffPolicy.EvaluateCandidate(new(1, "New Proxy", -40)).IsAllowed);
-        Assert.IsFalse(DeviceHandoffPolicy.EvaluateCandidate(new(2, "Headphones", -40)).IsAllowed);
-        Assert.IsTrue(DeviceHandoffPolicy.EvaluateCandidate(new(3, "Puffco Peak Pro", -40)).IsAllowed);
+        Assert.IsFalse(DeviceHandoffPolicy.EvaluateCandidate(new("1", "New Proxy", -40)).IsAllowed);
+        Assert.IsFalse(DeviceHandoffPolicy.EvaluateCandidate(new("2", "Headphones", -40)).IsAllowed);
+        Assert.IsTrue(DeviceHandoffPolicy.EvaluateCandidate(new("3", "Puffco Peak Pro", -40)).IsAllowed);
     }
 
     [TestMethod]

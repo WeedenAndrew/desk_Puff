@@ -101,7 +101,7 @@
         "resolved": "4.3.3",
         "contentHash": "cTcdSPIZ8WvchbC5DFmfHxrvVNZCtops+2W94le+Q+mx110Y9L9mqNVVc9flF35lFeL5GsY+rxGBylsjDk4+zg=="
       },
-      "deskpuff.bluetooth.windows": {
+      "DeskPuff.Bluetooth": {
         "type": "Project",
         "dependencies": {
           "DeskPuff.Core": "[0.1.0, )"

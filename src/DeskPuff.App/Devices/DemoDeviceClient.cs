@@ -2,7 +2,7 @@ using DeskPuff.Core.Devices;
 
 namespace DeskPuff.App.Devices;
 
-internal sealed class DemoDeviceClient : IDeviceClient
+internal sealed class DemoDeviceClient : IDeviceClient, ISessionOverrideClient
 {
     private readonly List<HeatProfile> profiles =
     [
@@ -33,6 +33,7 @@ internal sealed class DemoDeviceClient : IDeviceClient
     private DeviceCandidate? connectedCandidate;
     private double sessionBoostCelsius;
     private TimeSpan sessionTimeBoost;
+    private SessionOverride? sessionOverride;
     private bool disposed;
 
     public DeviceSnapshot Snapshot { get; private set; } = DeviceSnapshot.Disconnected;
@@ -110,6 +111,7 @@ internal sealed class DemoDeviceClient : IDeviceClient
         lock (stateGate)
         {
             ThrowIfHeating();
+            sessionOverride = null;
             HeatProfile profile = profiles.Single(item => item.Index == profileIndex);
             Snapshot = Snapshot with
             {
@@ -142,6 +144,53 @@ internal sealed class DemoDeviceClient : IDeviceClient
                     SessionTotal = profile.Duration,
                 };
             }
+        }
+
+        RaiseSnapshotChanged();
+        return Task.CompletedTask;
+    }
+
+    public Task ApplySessionOverrideAsync(
+        SessionOverride requested,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(requested);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (stateGate)
+        {
+            if (Snapshot.OperatingState != DeviceOperatingState.Idle)
+            {
+                throw new InvalidOperationException(
+                    "Session parameters can only be applied before a session starts.");
+            }
+
+            sessionOverride = requested;
+            Snapshot = Snapshot with
+            {
+                ActiveProfileName = requested.Name,
+                TargetTemperatureCelsius = requested.TargetTemperatureCelsius,
+                SessionTotal = requested.Duration,
+                Vapor = requested.Vapor,
+            };
+        }
+
+        RaiseSnapshotChanged();
+        return Task.CompletedTask;
+    }
+
+    public Task ClearSessionOverrideAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (stateGate)
+        {
+            if (sessionOverride is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            sessionOverride = null;
+            RestoreSlotSnapshot();
         }
 
         RaiseSnapshotChanged();
@@ -205,8 +254,8 @@ internal sealed class DemoDeviceClient : IDeviceClient
             sessionBoostCelsius += temperatureCelsius;
             Snapshot = Snapshot with
             {
-                TargetTemperatureCelsius = profiles[Snapshot.ActiveProfileIndex].TargetTemperatureCelsius +
-                    sessionBoostCelsius,
+                TargetTemperatureCelsius = (sessionOverride?.TargetTemperatureCelsius ??
+                    profiles[Snapshot.ActiveProfileIndex].TargetTemperatureCelsius) + sessionBoostCelsius,
             };
         }
 
@@ -227,7 +276,8 @@ internal sealed class DemoDeviceClient : IDeviceClient
             sessionTimeBoost += duration;
             Snapshot = Snapshot with
             {
-                SessionTotal = profiles[Snapshot.ActiveProfileIndex].Duration + sessionTimeBoost,
+                SessionTotal = (sessionOverride?.Duration ??
+                    profiles[Snapshot.ActiveProfileIndex].Duration) + sessionTimeBoost,
             };
         }
 
@@ -286,11 +336,14 @@ internal sealed class DemoDeviceClient : IDeviceClient
     {
         TimeSpan sinceStart = DateTimeOffset.UtcNow - startedAt;
         HeatProfile profile = profiles[Snapshot.ActiveProfileIndex];
+        double baseTemperature = sessionOverride?.TargetTemperatureCelsius ??
+            profile.TargetTemperatureCelsius;
+        TimeSpan baseDuration = sessionOverride?.Duration ?? profile.Duration;
         TimeSpan preheat = TimeSpan.FromSeconds(4);
         TimeSpan activeElapsed = sinceStart - preheat;
-        TimeSpan sessionTotal = profile.Duration + sessionTimeBoost;
+        TimeSpan sessionTotal = baseDuration + sessionTimeBoost;
         double ambient = 28;
-        double target = profile.TargetTemperatureCelsius + sessionBoostCelsius;
+        double target = baseTemperature + sessionBoostCelsius;
 
         if (sinceStart < preheat)
         {
@@ -320,13 +373,28 @@ internal sealed class DemoDeviceClient : IDeviceClient
         }
 
         heatStartedAt = null;
+        sessionOverride = null;
         Snapshot = Snapshot with
         {
             OperatingState = DeviceOperatingState.Idle,
             CurrentTemperatureCelsius = 45,
+            ActiveProfileName = profile.Name,
             TargetTemperatureCelsius = profile.TargetTemperatureCelsius,
             SessionTotal = profile.Duration,
+            Vapor = profile.Vapor,
             SessionElapsed = TimeSpan.Zero,
+        };
+    }
+
+    private void RestoreSlotSnapshot()
+    {
+        HeatProfile profile = profiles[Snapshot.ActiveProfileIndex];
+        Snapshot = Snapshot with
+        {
+            ActiveProfileName = profile.Name,
+            TargetTemperatureCelsius = profile.TargetTemperatureCelsius,
+            SessionTotal = profile.Duration,
+            Vapor = profile.Vapor,
         };
     }
 

@@ -3,11 +3,13 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
+using DeskPuff.App.Devices;
 using DeskPuff.App.Infrastructure;
 using DeskPuff.Core.Devices;
 using DeskPuff.Core.Profiles;
@@ -55,6 +57,66 @@ internal static class PalettePresentation
             ? "#0B1715"
             : "#F6F7F9";
     }
+
+    public static Color ToColor(string hex) =>
+        Color.TryParse(hex, out Color color) ? color : Colors.Gray;
+
+    /// <summary>The whole colourway swept across one shape.</summary>
+    public static LinearGradientBrush Sweep(
+        IReadOnlyList<string> colors,
+        double startX = 0,
+        double startY = 0,
+        double endX = 1,
+        double endY = 0)
+    {
+        LinearGradientBrush brush = new()
+        {
+            StartPoint = new RelativePoint(startX, startY, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(endX, endY, RelativeUnit.Relative),
+        };
+        if (colors.Count == 0)
+        {
+            brush.GradientStops.Add(new GradientStop(Colors.Gray, 0));
+            brush.GradientStops.Add(new GradientStop(Colors.Gray, 1));
+            return brush;
+        }
+
+        if (colors.Count == 1)
+        {
+            Color only = ToColor(colors[0]);
+            brush.GradientStops.Add(new GradientStop(only, 0));
+            brush.GradientStops.Add(new GradientStop(only, 1));
+            return brush;
+        }
+
+        for (int index = 0; index < colors.Count; index++)
+        {
+            brush.GradientStops.Add(new GradientStop(
+                ToColor(colors[index]),
+                (double)index / (colors.Count - 1)));
+        }
+
+        return brush;
+    }
+
+    /// <summary>One quadrant of the ring: this colour blending into the next.</summary>
+    public static LinearGradientBrush Pair(
+        string from,
+        string to,
+        double startX,
+        double startY,
+        double endX,
+        double endY)
+    {
+        LinearGradientBrush brush = new()
+        {
+            StartPoint = new RelativePoint(startX, startY, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(endX, endY, RelativeUnit.Relative),
+        };
+        brush.GradientStops.Add(new GradientStop(ToColor(from), 0));
+        brush.GradientStops.Add(new GradientStop(ToColor(to), 1));
+        return brush;
+    }
 }
 
 internal sealed record ColorPaletteOption(
@@ -70,16 +132,15 @@ internal sealed record ColorPaletteOption(
 
     public string ColorFour => ColorAt(3);
 
-    public Visibility ColorTwoVisibility => ColorVisibilityAt(1);
+    public bool ColorTwoVisibility => ColorVisibilityAt(1);
 
-    public Visibility ColorThreeVisibility => ColorVisibilityAt(2);
+    public bool ColorThreeVisibility => ColorVisibilityAt(2);
 
-    public Visibility ColorFourVisibility => ColorVisibilityAt(3);
+    public bool ColorFourVisibility => ColorVisibilityAt(3);
 
     private string ColorAt(int index) => index < Colors.Count ? Colors[index] : Colors[^1];
 
-    private Visibility ColorVisibilityAt(int index) =>
-        index < Colors.Count ? Visibility.Visible : Visibility.Collapsed;
+    private bool ColorVisibilityAt(int index) => index < Colors.Count;
 }
 
 internal sealed record DeviceProfileOption(
@@ -122,16 +183,43 @@ internal sealed record HeatingProfileOption(
 
     public string ColorFour => ColorAt(3);
 
-    public Visibility ColorTwoVisibility => ColorVisibilityAt(1);
+    public bool ColorTwoVisibility => ColorVisibilityAt(1);
 
-    public Visibility ColorThreeVisibility => ColorVisibilityAt(2);
+    public bool ColorThreeVisibility => ColorVisibilityAt(2);
 
-    public Visibility ColorFourVisibility => ColorVisibilityAt(3);
+    public bool ColorFourVisibility => ColorVisibilityAt(3);
 
     private string ColorAt(int index) => index < Colors.Count ? Colors[index] : Colors[^1];
 
-    private Visibility ColorVisibilityAt(int index) =>
-        index < Colors.Count ? Visibility.Visible : Visibility.Collapsed;
+    private bool ColorVisibilityAt(int index) => index < Colors.Count;
+}
+
+internal enum ProfileSource
+{
+    Saved,
+    Device,
+}
+
+internal sealed record ProfileSelectionOption(
+    ProfileSource Source,
+    string Name,
+    int DeviceProfileIndex,
+    IReadOnlyList<string> Colors,
+    HeatingProfileOption? SavedProfile)
+{
+    public string ColorOne => ColorAt(0);
+
+    public string ColorTwo => ColorAt(1);
+
+    public string ColorThree => ColorAt(2);
+
+    public string ColorFour => ColorAt(3);
+
+    public LinearGradientBrush Gradient => PalettePresentation.Sweep(Colors);
+
+    public string ForegroundDisplay => PalettePresentation.ContrastForeground(Colors);
+
+    private string ColorAt(int index) => index < Colors.Count ? Colors[index] : Colors[^1];
 }
 
 internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
@@ -146,6 +234,19 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         "#F80B00",
         "#FFFFFF",
     ];
+
+    // A hard ceiling for anything this app runs for a session. 600 F is below
+    // the safety policy's own 327 C (620.6 F) absolute maximum, so it can only
+    // ever tighten, never widen.
+    private const double MaximumSessionTemperatureCelsius = (600 - 32) * 5.0 / 9.0;
+
+    // Hard ceilings for one quick hit, tighter than the device's own boost
+    // limits (20 C and 30 s), so this can only ever reduce what is sent.
+    // Expressed in Fahrenheit because that is the delta the button shows.
+    private const double MaximumQuickHitTemperatureFahrenheit = 15;
+    private const double MaximumQuickHitTemperatureCelsius =
+        MaximumQuickHitTemperatureFahrenheit / 1.8;
+    private const double MaximumQuickHitTimeSeconds = 15;
 
     private static readonly DeviceLimits PreferenceFallbackLimits = new(
         190,
@@ -186,6 +287,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     ];
 
     private readonly SessionController controller;
+    private readonly ISessionOverrideClient? sessionOverrides;
     private readonly LocalProfileLibrary profileLibrary;
     private readonly bool demoMode;
     private readonly List<AsyncRelayCommand> asyncCommands = [];
@@ -214,8 +316,10 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string paletteName = string.Empty;
     private ColorPaletteOption? selectedSavedColorPalette;
     private DeviceProfileOption? selectedDeviceProfile;
+    private int requestedSelectionIndex = -1;
     private string heatingProfileName = string.Empty;
     private HeatingProfileOption? selectedSavedHeatingProfile;
+    private HeatingProfileOption? savedProfileSelection;
     private int selectedColorStopIndex;
     private bool useFahrenheit = true;
     private bool stealthEnabled;
@@ -230,29 +334,54 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private bool userOperationBusy;
     private bool disposed;
 
-    internal MainViewModel(SessionController controller, bool demoMode)
+    internal MainViewModel(
+        SessionController controller,
+        bool demoMode,
+        string? profileLibraryRoot = null,
+        ISessionOverrideClient? sessionOverrides = null)
     {
         this.controller = controller;
+        this.sessionOverrides = sessionOverrides;
         this.demoMode = demoMode;
-        profileLibrary = new LocalProfileLibrary(demoMode
+        profileLibrary = new LocalProfileLibrary(profileLibraryRoot ?? (demoMode
             ? Path.Combine(Path.GetTempPath(), "desk_Puff", "demo-profiles")
-            : LocalProfileLibrary.DefaultRootPath());
+            : LocalProfileLibrary.DefaultRootPath()));
         snapshot = controller.Snapshot;
         controller.SnapshotChanged += ControllerSnapshotChanged;
+        SavedHeatingProfiles.CollectionChanged += (_, _) => RebuildSelectableProfiles();
+        DeviceProfiles.CollectionChanged += (_, _) => RebuildSelectableProfiles();
 
         ScanCommand = CreateAsync(ScanAsync, () => !IsConnected);
         ConnectCommand = CreateAsync(ConnectAsync, () => !IsConnected && SelectedCandidate is not null);
         DisconnectCommand = CreateAsync(DisconnectAsync, () => IsConnected);
         StartStopCommand = CreateAsync(StartStopAsync, () => CanStartOrStop);
         PreviousProfileCommand = CreateAsync(
-            token => SelectRelativeProfileAsync(-1, token),
-            () => CanEditDevice && profiles.Count > 1 && CurrentPage is AppPage.Home or AppPage.Profiles);
+            token => MoveProfileSelectionAsync(-1, token),
+            () => CanEditDevice
+                && SelectableProfiles.Count > 1
+                && CurrentPage is AppPage.Home or AppPage.Profiles);
         NextProfileCommand = CreateAsync(
-            token => SelectRelativeProfileAsync(1, token),
-            () => CanEditDevice && profiles.Count > 1 && CurrentPage is AppPage.Home or AppPage.Profiles);
+            token => MoveProfileSelectionAsync(1, token),
+            () => CanEditDevice
+                && SelectableProfiles.Count > 1
+                && CurrentPage is AppPage.Home or AppPage.Profiles);
+        // Home carries the slot strip now, so selection has to be permitted
+        // there too. The SelectedDeviceProfile setter fires this command, and
+        // with Profiles-only gating a tap on Home would set the property, fail
+        // CanExecute, and change nothing with no visible reason. Gated the same
+        // way as the previous/next profile commands above.
         SelectDeviceProfileCommand = CreateAsync(
             SelectSelectedDeviceProfileAsync,
-            () => CanEditDevice && CurrentPage == AppPage.Profiles && SelectedDeviceProfile is not null);
+            () => CanEditDevice
+                && CurrentPage is AppPage.Home or AppPage.Profiles
+                && SelectedDeviceProfile is not null);
+        // The Home strip is refined search: tap to jump straight to a profile,
+        // saved or device slot, without swiping past everything in between.
+        SelectProfileFromListCommand = CreateAsync(
+            token => SelectProfileAtAsync(requestedSelectionIndex, token),
+            () => CanEditDevice
+                && CurrentPage is AppPage.Home or AppPage.Profiles
+                && requestedSelectionIndex >= 0);
         BoostTemperatureCommand = CreateAsync(
             BoostTemperatureAsync,
             () => CanBoost);
@@ -319,6 +448,61 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public ObservableCollection<HeatingProfileOption> SavedHeatingProfiles { get; } = [];
 
+    // Saved local profiles come first, then the device slots. A saved profile is a
+    // set of parameters the app applies to a session, so it is a legitimate stop in
+    // the swipe order even though it is not a slot the device knows about.
+    public ObservableCollection<ProfileSelectionOption> SelectableProfiles { get; } = [];
+
+    public int SelectedProfileIndex
+    {
+        get
+        {
+            if (savedProfileSelection is { } saved)
+            {
+                int savedIndex = SavedHeatingProfiles.IndexOf(saved);
+                if (savedIndex >= 0)
+                {
+                    return DeviceProfiles.Count + savedIndex;
+                }
+            }
+
+            return DeviceProfileOrdinal(snapshot.ActiveProfileIndex);
+        }
+    }
+
+    public bool SavedProfileCaptionVisibility => DisplayedSavedProfile is not null;
+
+    public ProfileSelectionOption? SelectedProfile
+    {
+        get
+        {
+            int index = SelectedProfileIndex;
+            return index >= 0 && index < SelectableProfiles.Count ? SelectableProfiles[index] : null;
+        }
+
+        // Tapping a chip on the Home strip lands here. A null means the list is
+        // rebuilding and has dropped its selection, which is not a user choice.
+        set
+        {
+            if (value is null || ReferenceEquals(value, SelectedProfile))
+            {
+                return;
+            }
+
+            int index = SelectableProfiles.IndexOf(value);
+            if (index < 0 || index == SelectedProfileIndex)
+            {
+                return;
+            }
+
+            requestedSelectionIndex = index;
+            if (SelectProfileFromListCommand.CanExecute(null))
+            {
+                SelectProfileFromListCommand.Execute(null);
+            }
+        }
+    }
+
     public IReadOnlyList<VaporLevel> VaporLevels { get; } = Enum.GetValues<VaporLevel>();
 
     public IReadOnlyList<ShortcutOption> ShortcutOptions { get; } = AvailableShortcutOptions;
@@ -338,6 +522,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ICommand NextProfileCommand { get; }
 
     public ICommand SelectDeviceProfileCommand { get; }
+
+    public ICommand SelectProfileFromListCommand { get; }
 
     public ICommand BoostTemperatureCommand { get; }
 
@@ -708,17 +894,17 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public bool CanHotSwap => DeviceHandoffPolicy.EvaluateSource(snapshot).IsAllowed;
 
-    public Visibility ConnectionVisibility => IsDisconnected ? Visibility.Visible : Visibility.Collapsed;
+    public bool ConnectionVisibility => IsDisconnected;
 
-    public Visibility DeviceVisibility => IsConnected ? Visibility.Visible : Visibility.Collapsed;
+    public bool DeviceVisibility => IsConnected;
 
-    public Visibility HomeVisibility => PageVisibility(AppPage.Home);
+    public bool HomeVisibility => PageVisibility(AppPage.Home);
 
-    public Visibility ProfilesVisibility => PageVisibility(AppPage.Profiles);
+    public bool ProfilesVisibility => PageVisibility(AppPage.Profiles);
 
-    public Visibility ColorVisibility => PageVisibility(AppPage.Color);
+    public bool ColorVisibility => PageVisibility(AppPage.Color);
 
-    public Visibility SettingsVisibility => PageVisibility(AppPage.Settings);
+    public bool SettingsVisibility => PageVisibility(AppPage.Settings);
 
     public string DeviceName => snapshot.Identity?.Name ?? "NO DEVICE";
 
@@ -730,7 +916,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _ => "NO DEVICE",
     };
 
-    public string ProfileName => snapshot.ActiveProfileName.ToUpperInvariant();
+    public string ProfileName => (DisplayedSavedProfile?.Name ?? snapshot.ActiveProfileName)
+        .ToUpperInvariant();
 
     public string VaporText => $"{snapshot.Vapor.ToString().ToUpperInvariant()} VAPOR";
 
@@ -757,6 +944,11 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get
         {
+            if (DisplayedSavedProfile is { Colors.Count: > 0 } saved)
+            {
+                return saved.Colors[0];
+            }
+
             HeatProfile? profile = profiles.FirstOrDefault(item => item.Index == snapshot.ActiveProfileIndex);
             if (profile is not null)
             {
@@ -778,6 +970,17 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public string ActiveProfileForegroundDisplay => PalettePresentation.ContrastForeground(ActiveProfilePalette());
 
+    /// <summary>The profile's own colourway, for the name inside the circle.</summary>
+    public LinearGradientBrush ProfileNameBrush => PalettePresentation.Sweep(ActiveProfilePalette());
+
+    public LinearGradientBrush ProfileArcOne => ArcBrush(0, 0, 0, 1, 1);
+
+    public LinearGradientBrush ProfileArcTwo => ArcBrush(1, 1, 0, 0, 1);
+
+    public LinearGradientBrush ProfileArcThree => ArcBrush(2, 1, 1, 0, 0);
+
+    public LinearGradientBrush ProfileArcFour => ArcBrush(3, 0, 1, 1, 0);
+
     public string ActiveProfilePositionText => profiles.Count == 0
         ? "NO PROFILE"
         : $"PROFILE {snapshot.ActiveProfileIndex + 1} OF {profiles.Count}";
@@ -793,7 +996,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             double? celsius = snapshot.IsHeating
                 ? snapshot.CurrentTemperatureCelsius
-                : snapshot.TargetTemperatureCelsius;
+                : DisplayedSavedProfile?.TargetTemperatureCelsius ?? snapshot.TargetTemperatureCelsius;
             return celsius is null
                 ? "--°"
                 : $"{Math.Round(ToDisplayTemperature(celsius.Value)):0}°";
@@ -808,7 +1011,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             TimeSpan time = snapshot.OperatingState == DeviceOperatingState.Active
                 ? snapshot.SessionRemaining
-                : snapshot.SessionTotal;
+                : DisplayedSavedProfile is { } saved
+                    ? TimeSpan.FromSeconds(saved.DurationSeconds)
+                    : snapshot.SessionTotal;
             int minutes = Math.Max(0, (int)time.TotalMinutes);
             int seconds = Math.Max(0, time.Seconds);
             return $"{minutes:00}:{seconds:00}";
@@ -882,11 +1087,11 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public string EditorPaletteForegroundDisplay => PalettePresentation.ContrastForeground(EditorPaletteColors());
 
-    public Visibility EditorColorTwoVisibility => HexColorVisibility(EditorColorTwo);
+    public bool EditorColorTwoVisibility => HexColorVisibility(EditorColorTwo);
 
-    public Visibility EditorColorThreeVisibility => HexColorVisibility(EditorColorThree);
+    public bool EditorColorThreeVisibility => HexColorVisibility(EditorColorThree);
 
-    public Visibility EditorColorFourVisibility => HexColorVisibility(EditorColorFour);
+    public bool EditorColorFourVisibility => HexColorVisibility(EditorColorFour);
 
     public string WheelColor
     {
@@ -1197,21 +1402,67 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (snapshot.IsHeating)
         {
             await controller.StopAsync(cancellationToken);
+            await ClearSessionOverrideAsync(cancellationToken);
             StatusText = "Heat cycle stopped";
         }
         else
         {
+            // Validate and apply before starting, so a rejected profile never
+            // leaves a session running on the wrong parameters.
+            HeatingProfileOption? running = savedProfileSelection;
+            if (running is not null)
+            {
+                await ApplySessionOverrideAsync(running, cancellationToken);
+            }
+
             await controller.StartAsync(cancellationToken);
-            StatusText = "Heat cycle started";
+            StatusText = running is null
+                ? "Heat cycle started"
+                : $"Running {running.Name} for this session";
         }
 
         await controller.RefreshAsync(cancellationToken);
     }
 
-    private async Task SelectRelativeProfileAsync(int offset, CancellationToken cancellationToken)
+    private async Task ApplySessionOverrideAsync(
+        HeatingProfileOption saved,
+        CancellationToken cancellationToken)
     {
-        int profileIndex = (snapshot.ActiveProfileIndex + offset + profiles.Count) % profiles.Count;
-        await SelectProfileAsync(profileIndex, cancellationToken);
+        // Throws before anything is applied if the parameters are unsafe. The
+        // envelope is the same one a profile slot is held to.
+        HeatProfile profile = BuildSavedHeatProfile(saved);
+        if (profile.TargetTemperatureCelsius > MaximumSessionTemperatureCelsius)
+        {
+            throw new DeviceSafetyException(
+                $"{saved.Name} is above the 600 F ceiling for a session.");
+        }
+
+        if (sessionOverrides is null)
+        {
+            throw new DeviceSafetyException(
+                "Running a saved profile awaits hardware validation for this firmware.");
+        }
+
+        await sessionOverrides.ApplySessionOverrideAsync(
+            new SessionOverride(
+                saved.Name,
+                profile.TargetTemperatureCelsius,
+                profile.Duration,
+                profile.Vapor,
+                profile.ColorPalette),
+            cancellationToken);
+        ApplySnapshot(controller.Snapshot);
+    }
+
+    private async Task ClearSessionOverrideAsync(CancellationToken cancellationToken)
+    {
+        if (sessionOverrides is null)
+        {
+            return;
+        }
+
+        await sessionOverrides.ClearSessionOverrideAsync(cancellationToken);
+        ApplySnapshot(controller.Snapshot);
     }
 
     private async Task SelectProfileAsync(int profileIndex, CancellationToken cancellationToken)
@@ -1239,6 +1490,64 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             SyncSelectedDeviceProfile();
         }
+    }
+
+    internal async Task SelectProfileAtAsync(int selectionIndex, CancellationToken cancellationToken)
+    {
+        if (selectionIndex < 0 || selectionIndex >= SelectableProfiles.Count)
+        {
+            throw new InvalidOperationException("That profile is not in the current selection order.");
+        }
+
+        ProfileSelectionOption option = SelectableProfiles[selectionIndex];
+        if (option.SavedProfile is { } saved)
+        {
+            SelectSavedProfile(saved);
+            return;
+        }
+
+        savedProfileSelection = null;
+        await SelectProfileAsync(option.DeviceProfileIndex, cancellationToken);
+        NotifyProfileSelectionProperties();
+    }
+
+    internal Task MoveProfileSelectionAsync(int offset, CancellationToken cancellationToken)
+    {
+        int count = SelectableProfiles.Count;
+        if (count == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        int current = SelectedProfileIndex;
+        int next = current < 0
+            ? (offset > 0 ? 0 : count - 1)
+            : (((current + offset) % count) + count) % count;
+        return SelectProfileAtAsync(next, cancellationToken);
+    }
+
+    // Selecting a saved profile writes nothing to a profile slot: it validates the
+    // parameters, records the selection, and loads the editor. No device path here.
+    private void SelectSavedProfile(HeatingProfileOption saved)
+    {
+        HeatProfile profile = BuildSavedHeatProfile(saved);
+        savedProfileSelection = saved;
+        LoadEditorFromSavedProfile(saved, profile);
+        StatusText = $"Selected saved profile {saved.Name}";
+        NotifyProfileSelectionProperties();
+    }
+
+    private int DeviceProfileOrdinal(int deviceProfileIndex)
+    {
+        for (int ordinal = 0; ordinal < DeviceProfiles.Count; ordinal++)
+        {
+            if (DeviceProfiles[ordinal].Index == deviceProfileIndex)
+            {
+                return ordinal;
+            }
+        }
+
+        return -1;
     }
 
     private async Task SaveProfileAsync(CancellationToken cancellationToken)
@@ -1288,13 +1597,17 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(TimeBoostShortcutText));
 
         double savedTemperatureCelsius = preferences.QuickHitTemperatureCelsius;
-        if (!double.IsFinite(savedTemperatureCelsius) || savedTemperatureCelsius is <= 0 or > 30)
+        if (!double.IsFinite(savedTemperatureCelsius) ||
+            savedTemperatureCelsius <= 0 ||
+            savedTemperatureCelsius > MaximumQuickHitTemperatureCelsius)
         {
             savedTemperatureCelsius = 5;
         }
 
         double savedTimeSeconds = preferences.QuickHitTimeSeconds;
-        if (!double.IsFinite(savedTimeSeconds) || savedTimeSeconds is <= 0 or > 120)
+        if (!double.IsFinite(savedTimeSeconds) ||
+            savedTimeSeconds <= 0 ||
+            savedTimeSeconds > MaximumQuickHitTimeSeconds)
         {
             savedTimeSeconds = 10;
         }
@@ -1416,6 +1729,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             storedHeating = await profileLibrary.LoadHeatingAsync(cancellationToken);
         }
 
+        savedProfileSelection = null;
         SavedHeatingProfiles.Clear();
         foreach (StoredLocalProfile<LocalHeatingProfile> stored in storedHeating)
         {
@@ -1456,6 +1770,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         SelectedSavedHeatingProfile = SavedHeatingProfiles.FirstOrDefault();
         OnPropertyChanged(nameof(CurrentColorProfileName));
+        NotifyProfileSelectionProperties();
     }
 
     private async Task ReloadLocalProfilesAsync(CancellationToken cancellationToken)
@@ -1640,6 +1955,11 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             stored.FileName);
         if (existingIndex >= 0)
         {
+            if (ReferenceEquals(savedProfileSelection, SavedHeatingProfiles[existingIndex]))
+            {
+                savedProfileSelection = savedProfile;
+            }
+
             SavedHeatingProfiles[existingIndex] = savedProfile;
         }
         else
@@ -1648,6 +1968,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
 
         SelectedSavedHeatingProfile = savedProfile;
+        NotifyProfileSelectionProperties();
         StatusText = $"Saved heating profile {name} with {colorProfileName} to JSON";
     }
 
@@ -1655,6 +1976,13 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         HeatingProfileOption savedProfile = SelectedSavedHeatingProfile ??
             throw new InvalidOperationException("Select a local heating profile first.");
+        LoadEditorFromSavedProfile(savedProfile, BuildSavedHeatProfile(savedProfile));
+        StatusText = $"Loaded {savedProfile.Name} with {savedProfile.ColorProfileName} • Save Profile writes it to the selected slot";
+        return Task.CompletedTask;
+    }
+
+    private HeatProfile BuildSavedHeatProfile(HeatingProfileOption savedProfile)
+    {
         HeatProfile profile = new(
             snapshot.ActiveProfileIndex,
             savedProfile.DeviceProfileName,
@@ -1671,7 +1999,11 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             profile,
             snapshot.Limits ?? PreferenceFallbackLimits,
             snapshot.Chamber).ThrowIfDenied();
+        return profile;
+    }
 
+    private void LoadEditorFromSavedProfile(HeatingProfileOption savedProfile, HeatProfile profile)
+    {
         EditorName = profile.Name;
         EditorTemperature = ToDisplayTemperature(profile.TargetTemperatureCelsius);
         EditorDurationSeconds = profile.Duration.TotalSeconds;
@@ -1682,8 +2014,6 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         SelectedSavedColorPalette = SavedColorPalettes.FirstOrDefault(
             palette => ColorsMatch(palette.Colors, profile.ColorPalette));
         HeatingProfileName = savedProfile.Name;
-        StatusText = $"Loaded {savedProfile.Name} with {savedProfile.ColorProfileName} • Save Profile writes it to the selected slot";
-        return Task.CompletedTask;
     }
 
     private async Task DeleteHeatingProfileAsync(CancellationToken cancellationToken)
@@ -1692,7 +2022,13 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             throw new InvalidOperationException("Select a local heating profile first.");
         await profileLibrary.DeleteHeatingAsync(savedProfile.StorageFileName, cancellationToken);
         SavedHeatingProfiles.Remove(savedProfile);
+        if (ReferenceEquals(savedProfileSelection, savedProfile))
+        {
+            savedProfileSelection = null;
+        }
+
         SelectedSavedHeatingProfile = SavedHeatingProfiles.FirstOrDefault();
+        NotifyProfileSelectionProperties();
         StatusText = $"Deleted local heating profile {savedProfile.Name}";
     }
 
@@ -1715,14 +2051,17 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task BoostTemperatureAsync(CancellationToken cancellationToken)
     {
-        double temperatureCelsius = FromDisplayTemperatureDelta(QuickHitTemperature);
+        double temperatureCelsius = Math.Min(
+            FromDisplayTemperatureDelta(QuickHitTemperature),
+            MaximumQuickHitTemperatureCelsius);
         await controller.BoostTemperatureAsync(temperatureCelsius, cancellationToken);
         StatusText = $"{QuickTemperatureBoostText} temperature quick hit applied";
     }
 
     private async Task BoostTimeAsync(CancellationToken cancellationToken)
     {
-        TimeSpan duration = TimeSpan.FromSeconds(QuickHitTimeSeconds);
+        TimeSpan duration = TimeSpan.FromSeconds(
+            Math.Min(QuickHitTimeSeconds, MaximumQuickHitTimeSeconds));
         await controller.BoostTimeAsync(duration, cancellationToken);
         StatusText = $"{QuickTimeBoostText} time quick hit applied";
     }
@@ -1793,9 +2132,15 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             DeviceProfiles.Add(new DeviceProfileOption(profile.Index, profile.Name, colors));
         }
 
+        if (profiles.Count == 0)
+        {
+            savedProfileSelection = null;
+        }
+
         SyncSelectedDeviceProfile();
         NotifyProfileColorProperties();
         NotifyProfileCarouselProperties();
+        NotifyProfileSelectionProperties();
     }
 
     private void SyncSelectedDeviceProfile()
@@ -1888,7 +2233,10 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private void ControllerSnapshotChanged(object? sender, DeviceSnapshot updatedSnapshot) =>
         RunOnUiThread(() => ApplySnapshot(updatedSnapshot));
 
-    private void ApplySnapshot(DeviceSnapshot updatedSnapshot)
+    // Internal rather than private so a test can ingest a snapshot directly.
+    // The event path posts through the Avalonia dispatcher, which no test
+    // thread pumps; this is the same call that path ends up making.
+    internal void ApplySnapshot(DeviceSnapshot updatedSnapshot)
     {
         bool activeProfileChanged = snapshot.ActiveProfileIndex != updatedSnapshot.ActiveProfileIndex;
         snapshot = updatedSnapshot;
@@ -1897,6 +2245,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             SyncSelectedDeviceProfile();
             NotifyProfileCarouselProperties();
+            NotifyProfileSelectionProperties();
         }
 
         NotifyCommandStates();
@@ -1939,6 +2288,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             nameof(ProfileColorThree),
             nameof(ProfileColorFour),
             nameof(ActiveProfileForegroundDisplay),
+            nameof(SavedProfileCaptionVisibility),
             nameof(HeaderBadgeText),
             nameof(TemperatureText),
             nameof(TemperatureCaption),
@@ -1980,6 +2330,12 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(ProfileColorTwo));
         OnPropertyChanged(nameof(ProfileColorThree));
         OnPropertyChanged(nameof(ProfileColorFour));
+        OnPropertyChanged(nameof(ActiveProfileForegroundDisplay));
+        OnPropertyChanged(nameof(ProfileNameBrush));
+        OnPropertyChanged(nameof(ProfileArcOne));
+        OnPropertyChanged(nameof(ProfileArcTwo));
+        OnPropertyChanged(nameof(ProfileArcThree));
+        OnPropertyChanged(nameof(ProfileArcFour));
     }
 
     private void NotifyProfileCarouselProperties()
@@ -1988,8 +2344,57 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(ProfileColorSourceText));
     }
 
+    private void RebuildSelectableProfiles()
+    {
+        SelectableProfiles.Clear();
+        foreach (DeviceProfileOption device in DeviceProfiles)
+        {
+            SelectableProfiles.Add(new ProfileSelectionOption(
+                ProfileSource.Device,
+                device.Name,
+                device.Index,
+                device.Colors,
+                null));
+        }
+
+        foreach (HeatingProfileOption saved in SavedHeatingProfiles)
+        {
+            SelectableProfiles.Add(new ProfileSelectionOption(
+                ProfileSource.Saved,
+                saved.Name,
+                -1,
+                saved.Colors,
+                saved));
+        }
+
+        NotifyProfileSelectionProperties();
+    }
+
+    private void NotifyProfileSelectionProperties()
+    {
+        OnPropertyChanged(nameof(SelectedProfileIndex));
+        OnPropertyChanged(nameof(SelectedProfile));
+        OnPropertyChanged(nameof(SavedProfileCaptionVisibility));
+        OnPropertyChanged(nameof(ProfileName));
+        OnPropertyChanged(nameof(TemperatureText));
+        OnPropertyChanged(nameof(SessionTimeText));
+        NotifyProfileColorProperties();
+        NotifyCommandStates();
+    }
+
+    // Null unless a saved profile is the selection AND the device is idle. Every
+    // circle property routes through this, so there is one place that decides
+    // whether the display is showing a plan or the device.
+    private HeatingProfileOption? DisplayedSavedProfile =>
+        snapshot.IsHeating ? null : savedProfileSelection;
+
     private IReadOnlyList<string> ActiveProfilePalette()
     {
+        if (DisplayedSavedProfile is { Colors.Count: > 0 } saved)
+        {
+            return saved.Colors;
+        }
+
         HeatProfile? profile = profiles.FirstOrDefault(item => item.Index == snapshot.ActiveProfileIndex);
         return profile?.ColorPalette is { Count: > 0 } colors
             ? colors
@@ -2001,6 +2406,20 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         IReadOnlyList<string> colors = ActiveProfilePalette();
         return slot < colors.Count ? colors[slot] : colors[^1];
     }
+
+    private LinearGradientBrush ArcBrush(
+        int quadrant,
+        double startX,
+        double startY,
+        double endX,
+        double endY) =>
+        PalettePresentation.Pair(
+            ProfileColorAt(quadrant),
+            ProfileColorAt((quadrant + 1) % 4),
+            startX,
+            startY,
+            endX,
+            endY);
 
     private string[] EditorPaletteColors() =>
     [
@@ -2115,7 +2534,17 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         if (SetProperty(ref storage, value ?? string.Empty, propertyName))
         {
+            // Every display property falls back to the one before it, so a
+            // change to any stop can change all four. Notifying only the stop
+            // that moved left the rest painting a stale colour: with a
+            // one-colour palette, stops two through four all fall back to the
+            // first, so the colorway bar kept three quarters of its old value
+            // and looked like it had not updated at all.
             OnPropertyChanged(displayPropertyName);
+            OnPropertyChanged(nameof(EditorColorDisplay));
+            OnPropertyChanged(nameof(EditorColorTwoDisplay));
+            OnPropertyChanged(nameof(EditorColorThreeDisplay));
+            OnPropertyChanged(nameof(EditorColorFourDisplay));
             OnPropertyChanged(nameof(EditorColorTwoVisibility));
             OnPropertyChanged(nameof(EditorColorThreeVisibility));
             OnPropertyChanged(nameof(EditorColorFourVisibility));
@@ -2130,8 +2559,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private static string ColorDisplayOrFallback(string color, string fallback) =>
         IsHexColor(color) ? color : fallback;
 
-    private static Visibility HexColorVisibility(string color) =>
-        IsHexColor(color) ? Visibility.Visible : Visibility.Collapsed;
+    private static bool HexColorVisibility(string color) => IsHexColor(color);
 
     private static void ApplyAppAccent(string colorHex)
     {
@@ -2220,8 +2648,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
-    private Visibility PageVisibility(AppPage page) =>
-        IsConnected && CurrentPage == page ? Visibility.Visible : Visibility.Collapsed;
+    private bool PageVisibility(AppPage page) => IsConnected && CurrentPage == page;
 
     private double ToDisplayTemperature(double celsius) =>
         UseFahrenheit ? ((celsius * 9) / 5) + 32 : celsius;

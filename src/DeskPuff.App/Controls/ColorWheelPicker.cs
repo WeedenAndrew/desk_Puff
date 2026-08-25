@@ -47,9 +47,9 @@ public sealed class ColorWheelPicker : Control
         return new Size(Math.Min(width, 150), Math.Min(height, 170));
     }
 
-    public override void Render(DrawingContext drawingContext)
+    public override void Render(DrawingContext context)
     {
-        base.Render(drawingContext);
+        base.Render(context);
         double diameter = WheelDiameter();
         if (diameter <= 2)
         {
@@ -66,9 +66,9 @@ public sealed class ColorWheelPicker : Control
 
         double left = (Bounds.Width - diameter) / 2;
         Rect wheelBounds = new(left, 0, diameter, diameter);
-        using (drawingContext.PushClip(new EllipseGeometry(wheelBounds)))
+        using (context.PushGeometryClip(new EllipseGeometry(wheelBounds)))
         {
-            drawingContext.DrawImage(
+            context.DrawImage(
                 wheelBitmap,
                 new Rect(0, 0, wheelBitmap.PixelSize.Width, wheelBitmap.PixelSize.Height),
                 wheelBounds);
@@ -80,8 +80,8 @@ public sealed class ColorWheelPicker : Control
         Point marker = new(
             wheelBounds.Left + radius + (Math.Cos(angle) * radius * saturation),
             wheelBounds.Top + radius + (Math.Sin(angle) * radius * saturation));
-        drawingContext.DrawEllipse(Brushes.Transparent, new Pen(Brushes.Black, 4), marker, 5, 5);
-        drawingContext.DrawEllipse(Brushes.Transparent, new Pen(Brushes.White, 2), marker, 5, 5);
+        context.DrawEllipse(Brushes.Transparent, new Pen(Brushes.Black, 4), marker, 5, 5);
+        context.DrawEllipse(Brushes.Transparent, new Pen(Brushes.White, 2), marker, 5, 5);
 
         Rect brightnessBounds = BrightnessBounds(diameter);
         LinearGradientBrush brightness = new()
@@ -94,9 +94,9 @@ public sealed class ColorWheelPicker : Control
                 new GradientStop(ColorFromHsv(hue, saturation, 1), 1),
             },
         };
-        drawingContext.DrawRectangle(brightness, null, brightnessBounds, 4, 4);
+        context.DrawRectangle(brightness, null, brightnessBounds, 4, 4);
         double brightnessX = brightnessBounds.Left + (brightnessBounds.Width * value);
-        drawingContext.DrawLine(
+        context.DrawLine(
             new Pen(Brushes.White, 2),
             new Point(brightnessX, brightnessBounds.Top - 2),
             new Point(brightnessX, brightnessBounds.Bottom + 2));

@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using DeskPuff.App.Devices;
@@ -22,7 +23,11 @@ public sealed partial class App : Application
                 string.Equals(argument, "--demo", StringComparison.OrdinalIgnoreCase)) == true;
             IDeviceClient client = demoMode ? new DemoDeviceClient() : new LoraxDeviceClient();
             SessionController controller = new(client, new DeviceSafetyPolicy());
-            MainViewModel viewModel = new(controller, demoMode);
+            MainViewModel viewModel = new(
+                controller,
+                demoMode,
+                profileLibraryRoot: null,
+                sessionOverrides: client as ISessionOverrideClient);
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             desktop.MainWindow = new MainWindow(viewModel);
         }

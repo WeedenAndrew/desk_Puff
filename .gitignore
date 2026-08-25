@@ -22,3 +22,7 @@ coverage.*
 *.log
 .DS_Store
 Thumbs.db
+
+# Local working notes, kept outside version control
+*.local.md
+notes/

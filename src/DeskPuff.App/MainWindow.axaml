@@ -1,4 +1,5 @@
 <Window x:Class="DeskPuff.App.MainWindow"
+        x:CompileBindings="False"
         xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="using:DeskPuff.App.Controls"
@@ -7,7 +8,7 @@
         Height="760"
         MinWidth="460"
         MinHeight="760"
-        SystemDecorations="None"
+        WindowDecorations="None"
         CanResize="True"
         WindowStartupLocation="CenterScreen"
         Background="Transparent"
@@ -26,8 +27,8 @@
           CornerRadius="20">
     <Viewbox Stretch="Uniform"
              StretchDirection="Both"
-             HorizontalAlignment="Stretch"
-             VerticalAlignment="Stretch">
+             HorizontalAlignment="Center"
+             VerticalAlignment="Center">
       <Grid Width="458" Height="758">
       <Grid.RowDefinitions>
         <RowDefinition Height="46" />
@@ -60,7 +61,7 @@
                 VerticalAlignment="Center"
                 Background="Transparent"
                 BorderThickness="0"
-                ToolTip="Settings" />
+                ToolTip.Tip="Settings" />
         <Border Grid.Column="1"
                 Background="#1C2027"
                 CornerRadius="8"
@@ -73,7 +74,7 @@
                      FontWeight="SemiBold"
                      MaxWidth="132"
                      TextTrimming="CharacterEllipsis"
-                     ToolTip="{Binding HeaderBadgeText}" />
+                     ToolTip.Tip="{Binding HeaderBadgeText}" />
         </Border>
         <Button Grid.Column="2"
                 Content="—"
@@ -92,7 +93,7 @@
                 Background="Transparent"
                 BorderThickness="0"
                 FontSize="14"
-                ToolTip="Maximize" />
+                ToolTip.Tip="Maximize" />
         <Button Grid.Column="4"
                 Content="×"
                 Click="CloseButtonClick"
@@ -104,7 +105,7 @@
       </Grid>
 
       <Grid Grid.Row="1">
-        <Grid Visibility="{Binding ConnectionVisibility}"
+        <Grid IsVisible="{Binding ConnectionVisibility}"
               Margin="28,20,28,22">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -189,11 +190,12 @@
           </Grid>
         </Grid>
 
-        <Grid Visibility="{Binding HomeVisibility}" Margin="22,0,22,12">
+        <Grid IsVisible="{Binding HomeVisibility}" Margin="22,0,22,12">
           <Grid.RowDefinitions>
             <RowDefinition Height="106" />
             <RowDefinition Height="*" />
             <RowDefinition Height="78" />
+            <RowDefinition Height="64" />
           </Grid.RowDefinitions>
 
           <Grid Grid.Row="0">
@@ -267,6 +269,9 @@
                     Content="‹"
                     Command="{Binding PreviousProfileCommand}"
                     Width="52"
+                    HorizontalAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
                     Height="52"
                     Padding="0"
                     FontSize="29"
@@ -274,94 +279,110 @@
                     BorderThickness="0"
                     VerticalAlignment="Top"
                     Margin="0,89,0,0"
-                    ToolTip="{Binding PreviousProfileShortcutText, StringFormat=Previous profile ({0})}" />
+                    ToolTip.Tip="{Binding PreviousProfileShortcutText, StringFormat=Previous profile ({0})}" />
 
-            <Grid Grid.Column="1" Width="260" Height="260">
+            <Grid Grid.Column="1" Width="260" Height="260" HorizontalAlignment="Center">
               <Button AutomationProperties.AutomationId="StartStopButton"
                       Width="226"
                       Height="226"
                       Padding="0"
+                      HorizontalAlignment="Center"
                       VerticalAlignment="Top"
                       Command="{Binding StartStopCommand}"
                       Background="#171A20"
                       BorderBrush="{Binding ActiveProfileColor}"
-                      BorderThickness="3">
+                      BorderThickness="6">
                 <Button.Template>
                   <ControlTemplate TargetType="Button">
                           <Grid>
                             <Ellipse x:Name="Outer"
                                      Fill="{TemplateBinding Background}"
                                      Stroke="{TemplateBinding BorderBrush}"
-                                     StrokeThickness="{TemplateBinding BorderThickness}" />
-                            <Path Data="M 113,3 A 110,110 0 0 1 223,113"
-                                  StrokeThickness="4"
-                                  StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round"
-                                  IsHitTestVisible="False">
-                              <Path.Stroke>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                  <GradientStop Color="{Binding ProfileColorOne}" Offset="0" />
-                                  <GradientStop Color="{Binding ProfileColorTwo}" Offset="1" />
-                                </LinearGradientBrush>
-                              </Path.Stroke>
-                            </Path>
-                            <Path Data="M 223,113 A 110,110 0 0 1 113,223"
-                                  StrokeThickness="4"
-                                  StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round"
-                                  IsHitTestVisible="False">
-                              <Path.Stroke>
-                                <LinearGradientBrush StartPoint="1,0" EndPoint="0,1">
-                                  <GradientStop Color="{Binding ProfileColorTwo}" Offset="0" />
-                                  <GradientStop Color="{Binding ProfileColorThree}" Offset="1" />
-                                </LinearGradientBrush>
-                              </Path.Stroke>
-                            </Path>
-                            <Path Data="M 113,223 A 110,110 0 0 1 3,113"
-                                  StrokeThickness="4"
-                                  StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round"
-                                  IsHitTestVisible="False">
-                              <Path.Stroke>
-                                <LinearGradientBrush StartPoint="1,1" EndPoint="0,0">
-                                  <GradientStop Color="{Binding ProfileColorThree}" Offset="0" />
-                                  <GradientStop Color="{Binding ProfileColorFour}" Offset="1" />
-                                </LinearGradientBrush>
-                              </Path.Stroke>
-                            </Path>
-                            <Path Data="M 3,113 A 110,110 0 0 1 113,3"
-                                  StrokeThickness="4"
-                                  StrokeStartLineCap="Round"
-                                  StrokeEndLineCap="Round"
-                                  IsHitTestVisible="False">
-                              <Path.Stroke>
-                                <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
-                                  <GradientStop Color="{Binding ProfileColorFour}" Offset="0" />
-                                  <GradientStop Color="{Binding ProfileColorOne}" Offset="1" />
-                                </LinearGradientBrush>
-                              </Path.Stroke>
-                            </Path>
-                            <Ellipse Margin="11"
-                                     Stroke="{TemplateBinding BorderBrush}"
                                      StrokeThickness="1"
-                                     Opacity="0.28" />
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                     Opacity="0.35" />
+                            <!-- A slim lit tube: a soft bloom, a body, and a tight core, all
+                                 four quadrants blending one colour into the next. The brushes
+                                 are built in the view model because a gradient declared here
+                                 cannot resolve bindings on its own stops. -->
+                            <Path Data="M 113,10 A 103,103 0 0 1 216,113"
+                                  Stroke="{Binding ProfileArcOne}"
+                                  StrokeThickness="17"
+                                  Opacity="0.16"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 216,113 A 103,103 0 0 1 113,216"
+                                  Stroke="{Binding ProfileArcTwo}"
+                                  StrokeThickness="17"
+                                  Opacity="0.16"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 113,216 A 103,103 0 0 1 10,113"
+                                  Stroke="{Binding ProfileArcThree}"
+                                  StrokeThickness="17"
+                                  Opacity="0.16"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 10,113 A 103,103 0 0 1 113,10"
+                                  Stroke="{Binding ProfileArcFour}"
+                                  StrokeThickness="17"
+                                  Opacity="0.16"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 113,10 A 103,103 0 0 1 216,113"
+                                  Stroke="{Binding ProfileArcOne}"
+                                  StrokeThickness="9"
+                                  Opacity="0.5"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 216,113 A 103,103 0 0 1 113,216"
+                                  Stroke="{Binding ProfileArcTwo}"
+                                  StrokeThickness="9"
+                                  Opacity="0.5"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 113,216 A 103,103 0 0 1 10,113"
+                                  Stroke="{Binding ProfileArcThree}"
+                                  StrokeThickness="9"
+                                  Opacity="0.5"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 10,113 A 103,103 0 0 1 113,10"
+                                  Stroke="{Binding ProfileArcFour}"
+                                  StrokeThickness="9"
+                                  Opacity="0.5"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 113,10 A 103,103 0 0 1 216,113"
+                                  Stroke="{Binding ProfileArcOne}"
+                                  StrokeThickness="3"
+                                  Opacity="1"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 216,113 A 103,103 0 0 1 113,216"
+                                  Stroke="{Binding ProfileArcTwo}"
+                                  StrokeThickness="3"
+                                  Opacity="1"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 113,216 A 103,103 0 0 1 10,113"
+                                  Stroke="{Binding ProfileArcThree}"
+                                  StrokeThickness="3"
+                                  Opacity="1"
+                                  IsHitTestVisible="False" />
+                            <Path Data="M 10,113 A 103,103 0 0 1 113,10"
+                                  Stroke="{Binding ProfileArcFour}"
+                                  StrokeThickness="3"
+                                  Opacity="1"
+                                  IsHitTestVisible="False" />
+                            <ContentPresenter Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
                           </Grid>
                   </ControlTemplate>
                 </Button.Template>
-                <Grid Width="190" Height="190">
-                  <TextBlock Text="{Binding ProfileName}"
-                             FontSize="11"
-                             FontWeight="SemiBold"
-                             Foreground="{Binding ActiveProfileForegroundDisplay}"
-                             HorizontalAlignment="Center"
-                             VerticalAlignment="Top"
-                             Margin="0,14,0,0" />
-                  <StackPanel VerticalAlignment="Center" Margin="0,8,0,0">
+                <Grid Width="172" Height="172">
+                  <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ProfileName}"
+                               FontSize="15"
+                               FontWeight="Bold"
+                               Foreground="{Binding ProfileNameBrush}"
+                               HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding TemperatureText}"
                                FontSize="52"
                                FontWeight="Light"
-                               HorizontalAlignment="Center" />
+                               HorizontalAlignment="Center"
+                               Margin="0,1,0,0" />
                     <TextBlock Text="{Binding TemperatureCaption}"
                                FontSize="9"
                                FontWeight="SemiBold"
@@ -372,22 +393,36 @@
                                FontSize="23"
                                FontWeight="SemiBold"
                                HorizontalAlignment="Center" />
+                    <!-- In the flow rather than pinned to the bottom: the name
+                         and its caption made the stack tall enough to collide
+                         with a bottom-aligned label, and the circle narrows too
+                         sharply down there to hold one anyway. -->
+                    <TextBlock Text="{Binding StartStopText}"
+                               FontSize="10"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               Margin="0,9,0,0" />
                   </StackPanel>
-                  <TextBlock Text="{Binding StartStopText}"
-                             FontSize="10"
-                             FontWeight="Bold"
-                             HorizontalAlignment="Center"
-                             VerticalAlignment="Bottom"
-                             Margin="0,0,0,17" />
                 </Grid>
               </Button>
 
+              <TextBlock Text="SAVED PROFILE • NOT ON DEVICE"
+                         IsVisible="{Binding SavedProfileCaptionVisibility}"
+                         FontSize="10"
+                         FontWeight="Bold"
+                         Foreground="{DynamicResource AccentBrush}"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Bottom"
+                         Margin="0,0,0,9" />
             </Grid>
 
             <Button Grid.Column="2"
                     Content="›"
                     Command="{Binding NextProfileCommand}"
                     Width="52"
+                    HorizontalAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
                     Height="52"
                     Padding="0"
                     FontSize="29"
@@ -395,7 +430,7 @@
                     BorderThickness="0"
                     VerticalAlignment="Top"
                     Margin="0,89,0,0"
-                    ToolTip="{Binding NextProfileShortcutText, StringFormat=Next profile ({0})}" />
+                    ToolTip.Tip="{Binding NextProfileShortcutText, StringFormat=Next profile ({0})}" />
           </Grid>
 
           <Grid Grid.Row="2" VerticalAlignment="Center">
@@ -410,10 +445,11 @@
                     Height="64"
                     Padding="0"
                     HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
                     Margin="0,0,7,0"
                     Command="{Binding BoostTemperatureCommand}"
-                    ToolTip="{Binding TemperatureBoostShortcutText, StringFormat=Temperature boost ({0})}">
-              <StackPanel>
+                    ToolTip.Tip="{Binding TemperatureBoostShortcutText, StringFormat=Temperature boost ({0})}">
+              <StackPanel VerticalAlignment="Center" Margin="0,0,0,3">
                 <TextBlock Text="{Binding QuickTemperatureBoostText}"
                            FontSize="22"
                            FontWeight="SemiBold"
@@ -444,10 +480,11 @@
                     Height="64"
                     Padding="0"
                     HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
                     Margin="7,0,0,0"
                     Command="{Binding BoostTimeCommand}"
-                    ToolTip="{Binding TimeBoostShortcutText, StringFormat=Time boost ({0})}">
-              <StackPanel>
+                    ToolTip.Tip="{Binding TimeBoostShortcutText, StringFormat=Time boost ({0})}">
+              <StackPanel VerticalAlignment="Center" Margin="0,0,0,3">
                 <TextBlock Text="{Binding QuickTimeBoostText}"
                            FontSize="21"
                            FontWeight="SemiBold"
@@ -459,71 +496,126 @@
               </StackPanel>
             </Button>
           </Grid>
+
+          <Grid Grid.Row="3">
+            <Border Height="44"
+                    Width="414"
+                    Margin="0,7,0,0"
+                    VerticalAlignment="Top"
+                    HorizontalAlignment="Center"
+                    Background="#111319"
+                    CornerRadius="10" />
+            <ListBox x:Name="HomeProfileStrip"
+                     AutomationProperties.AutomationId="HomeProfileSelector"
+                     ItemsSource="{Binding SelectableProfiles}"
+                     SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
+                     IsEnabled="{Binding CanEditDevice}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="0"
+                     Width="406"
+                     Height="48"
+                     Margin="0,7,0,0"
+                     VerticalAlignment="Top"
+                     HorizontalAlignment="Center"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                     ScrollViewer.AllowAutoHide="False">
+              <ListBox.Styles>
+                <!-- A hairline in the 4px the list has beyond the panel above
+                     it, reading as an extension of the strip. The queue itself
+                     is what you drag, so this does not need to be grabbable;
+                     the thumb fills the lane so it sits flush, not floating. -->
+                <Style Selector="ScrollBar:horizontal">
+                  <Setter Property="Height" Value="4" />
+                  <Setter Property="MinHeight" Value="4" />
+                  <Setter Property="Margin" Value="0" />
+                  <Setter Property="Padding" Value="0" />
+                  <Setter Property="Background" Value="Transparent" />
+                  <Setter Property="Cursor" Value="Hand" />
+                </Style>
+                <Style Selector="ScrollBar:horizontal /template/ RepeatButton#PART_LineUpButton">
+                  <Setter Property="IsVisible" Value="False" />
+                </Style>
+                <Style Selector="ScrollBar:horizontal /template/ RepeatButton#PART_LineDownButton">
+                  <Setter Property="IsVisible" Value="False" />
+                </Style>
+                <Style Selector="ScrollBar:horizontal /template/ Thumb">
+                  <Setter Property="Margin" Value="0" />
+                  <Setter Property="MinWidth" Value="28" />
+                  <Setter Property="Cursor" Value="Hand" />
+                </Style>
+                <!-- The chip carries the profile's own colourway, so the theme's
+                     flat accent highlight has to get out of the way. Selection
+                     reads as full strength against dimmed neighbours. -->
+                <Style Selector="ListBoxItem">
+                  <Setter Property="Padding" Value="0" />
+                  <Setter Property="Margin" Value="2,0" />
+                  <Setter Property="MinWidth" Value="0" />
+                  <Setter Property="MinHeight" Value="0" />
+                  <Setter Property="Background" Value="Transparent" />
+                  <Setter Property="CornerRadius" Value="8" />
+                  <Setter Property="Opacity" Value="0.38" />
+                  <Setter Property="Cursor" Value="Hand" />
+                </Style>
+                <Style Selector="ListBoxItem:selected">
+                  <Setter Property="Opacity" Value="1" />
+                </Style>
+                <Style Selector="ListBoxItem:pointerover">
+                  <Setter Property="Opacity" Value="0.75" />
+                </Style>
+                <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+                  <Setter Property="Background" Value="Transparent" />
+                </Style>
+                <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                  <Setter Property="Background" Value="Transparent" />
+                </Style>
+                <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                  <Setter Property="Background" Value="Transparent" />
+                </Style>
+              </ListBox.Styles>
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <VirtualizingStackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Border Width="97"
+                          Height="34"
+                          CornerRadius="8"
+                          ClipToBounds="True"
+                          Background="{Binding Gradient}">
+                    <TextBlock Text="{Binding Name}"
+                               FontSize="9"
+                               FontWeight="Bold"
+                               Foreground="{Binding ForegroundDisplay}"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="4,0"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                  </Border>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
         </Grid>
 
-        <ScrollViewer Visibility="{Binding ProfilesVisibility}"
+        <ScrollViewer IsVisible="{Binding ProfilesVisibility}"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
-                      Margin="28,8,28,12">
-          <StackPanel>
+                      Margin="0,8,0,12">
+          <StackPanel Margin="28,0,28,0">
             <TextBlock Text="PROFILES"
                        FontSize="19"
-                       FontWeight="SemiBold" />
-            <TextBlock Text="Select a device slot, then adjust only what you need."
+                       FontWeight="SemiBold"
+                       TextAlignment="Center" />
+            <TextBlock Text="Build and edit your own profiles. Slots are chosen from Home."
                        Foreground="{StaticResource MutedBrush}"
                        FontSize="10"
-                       Margin="0,5,0,9" />
-
-            <TextBlock Text="DEVICE PROFILES"
-                       FontSize="9"
-                       Foreground="{DynamicResource AccentBrush}"
-                       FontWeight="SemiBold" />
-            <Border Height="54"
-                    Background="#111319"
-                    CornerRadius="10"
-                    Padding="4"
-                    Margin="0,5,0,10">
-              <ListBox AutomationProperties.AutomationId="DeviceProfilesSelector"
-                       ItemsSource="{Binding DeviceProfiles}"
-                       SelectedItem="{Binding SelectedDeviceProfile}"
-                       IsEnabled="{Binding CanEditDevice}"
-                       Background="Transparent"
-                       BorderThickness="0"
-                       ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                       ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                       ScrollViewer.PanningMode="HorizontalOnly">
-                <ListBox.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" />
-                  </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                  <DataTemplate>
-                    <Grid Width="78" Height="32">
-                      <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="7" />
-                      </Grid.RowDefinitions>
-                      <TextBlock Text="{Binding Name}"
-                                 FontSize="8"
-                                 FontWeight="SemiBold"
-                                 TextTrimming="CharacterEllipsis"
-                                 HorizontalAlignment="Center" />
-                      <Border Grid.Row="1" CornerRadius="3">
-                        <Border.Background>
-                          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                            <GradientStop Color="{Binding ColorOne}" Offset="0" />
-                            <GradientStop Color="{Binding ColorTwo}" Offset="0.34" />
-                            <GradientStop Color="{Binding ColorThree}" Offset="0.67" />
-                            <GradientStop Color="{Binding ColorFour}" Offset="1" />
-                          </LinearGradientBrush>
-                        </Border.Background>
-                      </Border>
-                    </Grid>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
-            </Border>
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="0,5,0,12" />
 
             <Grid Width="140"
                   Height="140"
@@ -538,8 +630,7 @@
                              StrokeThickness="3" />
                     <Path Data="M 113,3 A 110,110 0 0 1 223,113"
                           StrokeThickness="5"
-                          StrokeStartLineCap="Round"
-                          StrokeEndLineCap="Round">
+                          StrokeLineCap="Round">
                       <Path.Stroke>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                           <GradientStop Color="{Binding EditorColorDisplay}" Offset="0" />
@@ -549,8 +640,7 @@
                     </Path>
                     <Path Data="M 223,113 A 110,110 0 0 1 113,223"
                           StrokeThickness="5"
-                          StrokeStartLineCap="Round"
-                          StrokeEndLineCap="Round">
+                          StrokeLineCap="Round">
                       <Path.Stroke>
                         <LinearGradientBrush StartPoint="1,0" EndPoint="0,1">
                           <GradientStop Color="{Binding EditorColorTwoDisplay}" Offset="0" />
@@ -560,8 +650,7 @@
                     </Path>
                     <Path Data="M 113,223 A 110,110 0 0 1 3,113"
                           StrokeThickness="5"
-                          StrokeStartLineCap="Round"
-                          StrokeEndLineCap="Round">
+                          StrokeLineCap="Round">
                       <Path.Stroke>
                         <LinearGradientBrush StartPoint="1,1" EndPoint="0,0">
                           <GradientStop Color="{Binding EditorColorThreeDisplay}" Offset="0" />
@@ -571,8 +660,7 @@
                     </Path>
                     <Path Data="M 3,113 A 110,110 0 0 1 113,3"
                           StrokeThickness="5"
-                          StrokeStartLineCap="Round"
-                          StrokeEndLineCap="Round">
+                          StrokeLineCap="Round">
                       <Path.Stroke>
                         <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
                           <GradientStop Color="{Binding EditorColorFourDisplay}" Offset="0" />
@@ -680,7 +768,7 @@
                     BorderThickness="0"
                     Padding="0"
                     Margin="0,0,0,11"
-                    ToolTip="Open the color profile selector">
+                    ToolTip.Tip="Open the color profile selector">
               <Grid Width="385">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
@@ -721,7 +809,6 @@
               </Grid.ColumnDefinitions>
               <ComboBox ItemsSource="{Binding ProfileMacroOptions}"
                         ItemTemplate="{StaticResource ShortcutOptionTemplate}"
-                        SelectedValuePath="Value"
                         SelectedValue="{Binding EditorProfileMacroKey}" />
               <Button Grid.Column="2"
                       Content="SAVE MACRO"
@@ -814,8 +901,7 @@
                        Background="Transparent"
                        BorderThickness="0"
                        ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                       ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                       ScrollViewer.PanningMode="HorizontalOnly">
+                       ScrollViewer.VerticalScrollBarVisibility="Disabled">
                 <ListBox.ItemsPanel>
                   <ItemsPanelTemplate>
                     <StackPanel Orientation="Horizontal" />
@@ -857,11 +943,11 @@
           </StackPanel>
         </ScrollViewer>
 
-        <ScrollViewer Visibility="{Binding ColorVisibility}"
+        <ScrollViewer IsVisible="{Binding ColorVisibility}"
                       VerticalScrollBarVisibility="Hidden"
                       HorizontalScrollBarVisibility="Disabled"
-                      Margin="28,8,28,12">
-          <StackPanel>
+                      Margin="0,8,0,12">
+          <StackPanel Margin="28,0,28,0">
             <TextBlock Text="{Binding EditorName}"
                        FontSize="19"
                        FontWeight="SemiBold"
@@ -897,7 +983,7 @@
                       Background="Transparent"
                       BorderThickness="0"
                       VerticalAlignment="Center"
-                      ToolTip="Previous color in this colorway" />
+                      ToolTip.Tip="Previous color in this colorway" />
               <controls:ColorWheelPicker Grid.Column="1"
                                          Width="142"
                                          Height="160"
@@ -913,7 +999,7 @@
                       Background="Transparent"
                       BorderThickness="0"
                       VerticalAlignment="Center"
-                      ToolTip="Next color in this colorway" />
+                      ToolTip.Tip="Next color in this colorway" />
             </Grid>
 
             <Grid Margin="0,1,0,8">
@@ -1013,8 +1099,7 @@
                        Background="Transparent"
                        BorderThickness="0"
                        ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                       ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                       ScrollViewer.PanningMode="HorizontalOnly">
+                       ScrollViewer.VerticalScrollBarVisibility="Disabled">
                 <ListBox.ItemsPanel>
                   <ItemsPanelTemplate>
                     <StackPanel Orientation="Horizontal" />
@@ -1051,10 +1136,10 @@
           </StackPanel>
         </ScrollViewer>
 
-        <ScrollViewer Visibility="{Binding SettingsVisibility}"
+        <ScrollViewer IsVisible="{Binding SettingsVisibility}"
                       VerticalScrollBarVisibility="Auto"
-                      Margin="28,8,28,18">
-          <StackPanel>
+                      Margin="0,8,0,18">
+          <StackPanel Margin="28,0,28,0">
             <TextBlock Text="DEVICE &amp; SAFETY"
                        FontSize="19"
                        FontWeight="SemiBold" />
@@ -1125,8 +1210,7 @@
                   <TextBox Grid.Column="2"
                            AutomationProperties.AutomationId="AccentHexEditor"
                            Text="{Binding AppAccentHex, UpdateSourceTrigger=PropertyChanged}"
-                           MaxLength="7"
-                           CharacterCasing="Upper" />
+                           MaxLength="7"/>
                   <Button Grid.Column="4"
                           AutomationProperties.AutomationId="SaveAccentButton"
                           Content="SAVE"
@@ -1162,13 +1246,11 @@
                     <TextBlock Text="PREVIOUS PROFILE" FontSize="8" Foreground="{StaticResource MutedBrush}" />
                     <ComboBox ItemsSource="{Binding ShortcutOptions}"
                               ItemTemplate="{StaticResource ShortcutOptionTemplate}"
-                              SelectedValuePath="Value"
                               SelectedValue="{Binding PreviousProfileKey}"
                               Margin="0,4,0,9" />
                     <TextBlock Text="TEMP QUICK HIT" FontSize="8" Foreground="{StaticResource MutedBrush}" />
                     <ComboBox ItemsSource="{Binding ShortcutOptions}"
                               ItemTemplate="{StaticResource ShortcutOptionTemplate}"
-                              SelectedValuePath="Value"
                               SelectedValue="{Binding TemperatureBoostKey}"
                               Margin="0,4,0,0" />
                   </StackPanel>
@@ -1176,13 +1258,11 @@
                     <TextBlock Text="NEXT PROFILE" FontSize="8" Foreground="{StaticResource MutedBrush}" />
                     <ComboBox ItemsSource="{Binding ShortcutOptions}"
                               ItemTemplate="{StaticResource ShortcutOptionTemplate}"
-                              SelectedValuePath="Value"
                               SelectedValue="{Binding NextProfileKey}"
                               Margin="0,4,0,9" />
                     <TextBlock Text="TIME QUICK HIT" FontSize="8" Foreground="{StaticResource MutedBrush}" />
                     <ComboBox ItemsSource="{Binding ShortcutOptions}"
                               ItemTemplate="{StaticResource ShortcutOptionTemplate}"
-                              SelectedValuePath="Value"
                               SelectedValue="{Binding TimeBoostKey}"
                               Margin="0,4,0,0" />
                   </StackPanel>
@@ -1298,7 +1378,7 @@
       </Grid>
 
       <Border Grid.Row="2"
-              Visibility="{Binding DeviceVisibility}"
+              IsVisible="{Binding DeviceVisibility}"
               BorderBrush="#22252C"
               BorderThickness="0,1,0,0"
               CornerRadius="0,0,20,20"
@@ -1314,19 +1394,29 @@
                   Command="{Binding ShowProfilesCommand}"
                   Background="Transparent"
                   BorderThickness="0"
+                  HorizontalAlignment="Center"
+                  HorizontalContentAlignment="Center"
+                  VerticalContentAlignment="Center"
                   Padding="6">
-            <StackPanel>
-              <TextBlock Text="≡" FontSize="25" HorizontalAlignment="Center" />
-              <TextBlock Text="PROFILES" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" />
+            <StackPanel HorizontalAlignment="Center">
+              <Panel Height="26">
+                <TextBlock Text="≡" FontSize="25" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Panel>
+              <TextBlock Text="PROFILES" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
             </StackPanel>
           </Button>
           <Button Grid.Column="1"
                   Command="{Binding ShowHomeCommand}"
                   Background="Transparent"
                   BorderThickness="0"
+                  HorizontalAlignment="Center"
+                  HorizontalContentAlignment="Center"
+                  VerticalContentAlignment="Center"
                   Padding="6">
-            <StackPanel>
-              <TextBlock Text="●" FontSize="20" HorizontalAlignment="Center" />
+            <StackPanel HorizontalAlignment="Center">
+              <Panel Height="26">
+                <TextBlock Text="●" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Panel>
               <TextBlock Text="HOME" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
             </StackPanel>
           </Button>
@@ -1335,18 +1425,23 @@
                   Command="{Binding ShowColorCommand}"
                   Background="Transparent"
                   BorderThickness="0"
+                  HorizontalAlignment="Center"
+                  HorizontalContentAlignment="Center"
+                  VerticalContentAlignment="Center"
                   Padding="6">
-            <StackPanel>
-              <Ellipse Width="24" Height="24">
-                <Ellipse.Fill>
-                  <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Color="#F80B00" Offset="0" />
-                    <GradientStop Color="#6EE916" Offset="0.35" />
-                    <GradientStop Color="#2878FF" Offset="0.7" />
-                    <GradientStop Color="#E84DFF" Offset="1" />
-                  </LinearGradientBrush>
-                </Ellipse.Fill>
-              </Ellipse>
+            <StackPanel HorizontalAlignment="Center">
+              <Panel Height="26">
+                <Ellipse Width="24" Height="24" VerticalAlignment="Center">
+                  <Ellipse.Fill>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                      <GradientStop Color="#F80B00" Offset="0" />
+                      <GradientStop Color="#6EE916" Offset="0.35" />
+                      <GradientStop Color="#2878FF" Offset="0.7" />
+                      <GradientStop Color="#E84DFF" Offset="1" />
+                    </LinearGradientBrush>
+                  </Ellipse.Fill>
+                </Ellipse>
+              </Panel>
               <TextBlock Text="COLOR" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
             </StackPanel>
           </Button>
