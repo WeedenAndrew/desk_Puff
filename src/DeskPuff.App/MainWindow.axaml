@@ -9,20 +9,20 @@
         MinWidth="460"
         MinHeight="760"
         WindowDecorations="None"
-        CanResize="True"
+        CanResize="False"
         WindowStartupLocation="CenterScreen"
         Background="Transparent"
         TransparencyLevelHint="Transparent">
   <Window.Resources>
     <DataTemplate x:Key="ShortcutOptionTemplate">
-      <TextBlock Text="{Binding Label}" Foreground="{StaticResource TextBrush}" />
+      <TextBlock Text="{Binding Label}" Foreground="{DynamicResource TextBrush}" />
     </DataTemplate>
     <DataTemplate x:Key="DarkComboItemTemplate">
-      <TextBlock Text="{Binding}" Foreground="{StaticResource TextBrush}" />
+      <TextBlock Text="{Binding}" Foreground="{DynamicResource TextBrush}" />
     </DataTemplate>
   </Window.Resources>
-  <Border Background="{StaticResource WindowBrush}"
-          BorderBrush="#2A2D35"
+  <Border Background="{DynamicResource WindowBrush}"
+          BorderBrush="{DynamicResource BorderBrush}"
           BorderThickness="1"
           CornerRadius="20">
     <Viewbox Stretch="Uniform"
@@ -40,68 +40,42 @@
             Grid.Row="0"
             Background="Transparent"
             PointerPressed="TitleBarPointerPressed">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*" />
-          <ColumnDefinition Width="Auto" />
-          <ColumnDefinition Width="38" />
-          <ColumnDefinition Width="38" />
-          <ColumnDefinition Width="38" />
-        </Grid.ColumnDefinitions>
-        <Button Grid.Column="0"
-                AutomationProperties.AutomationId="SettingsNavButton"
+        <Button AutomationProperties.AutomationId="SettingsNavButton"
                 Command="{Binding ShowSettingsCommand}"
                 Content="⚙"
                 FontFamily="Segoe UI Symbol"
-                FontSize="20"
-                Width="42"
-                Height="38"
-                Padding="0"
+                FontSize="24"
+                Width="42" Height="38" Padding="0"
                 Margin="12,0,0,0"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Center"
                 Background="Transparent"
                 BorderThickness="0"
                 ToolTip.Tip="Settings" />
-        <Border Grid.Column="1"
-                Background="#1C2027"
-                CornerRadius="8"
-                Padding="8,4"
-                Margin="0,0,7,0"
-                VerticalAlignment="Center">
-          <TextBlock Text="{Binding HeaderBadgeText}"
-                     Foreground="{StaticResource MutedBrush}"
-                     FontSize="9"
-                     FontWeight="SemiBold"
-                     MaxWidth="132"
-                     TextTrimming="CharacterEllipsis"
-                     ToolTip.Tip="{Binding HeaderBadgeText}" />
-        </Border>
-        <Button Grid.Column="2"
-                Content="—"
-                Click="MinimizeButtonClick"
-                Padding="0"
-                Margin="2"
-                Background="Transparent"
-                BorderThickness="0"
-                FontSize="14" />
-        <Button x:Name="MaximizeButton"
-                Grid.Column="3"
-                Content="□"
-                Click="MaximizeButtonClick"
-                Padding="0"
-                Margin="2"
-                Background="Transparent"
-                BorderThickness="0"
-                FontSize="14"
-                ToolTip.Tip="Maximize" />
-        <Button Grid.Column="4"
-                Content="×"
-                Click="CloseButtonClick"
-                Padding="0"
-                Margin="2,2,8,2"
-                Background="Transparent"
-                BorderThickness="0"
-                FontSize="18" />
+        <StackPanel Orientation="Horizontal"
+                    Spacing="4"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Margin="0,0,4,0">
+          <Border Background="{DynamicResource SubtleBrush}"
+                  CornerRadius="8"
+                  Padding="8,4"
+                  VerticalAlignment="Center">
+            <TextBlock Text="{Binding HeaderBadgeText}"
+                      Foreground="{DynamicResource MutedBrush}"
+                      FontSize="9"
+                      FontWeight="SemiBold"
+                      MaxWidth="132"
+                      TextTrimming="CharacterEllipsis"
+                      ToolTip.Tip="{Binding HeaderBadgeText}" />
+          </Border>
+          <Button Content="—" Click="MinimizeButtonClick"
+                  Width="38" Height="38" Padding="3,3"
+                  Background="Transparent" BorderThickness="0" FontSize="18" />
+          <Button Content="X" Click="CloseButtonClick"
+                  Width="38" Height="38" Padding="3,3"
+                  Background="Transparent" BorderThickness="0" FontSize="18" />
+        </StackPanel>
       </Grid>
 
       <Grid Grid.Row="1">
@@ -137,18 +111,18 @@
                        FontWeight="SemiBold" />
             <TextBlock Text="App-enabled Puffco bases only"
                        HorizontalAlignment="Center"
-                       Foreground="{StaticResource MutedBrush}"
+                       Foreground="{DynamicResource MutedBrush}"
                        FontSize="11"
                        Margin="0,6,0,0" />
           </StackPanel>
           <ListBox Grid.Row="2"
                    ItemsSource="{Binding Candidates}"
                    SelectedItem="{Binding SelectedCandidate}"
-                   Background="{StaticResource PanelBrush}"
-                   BorderBrush="#282C35"
+                   Background="{DynamicResource PanelBrush}"
+                   BorderBrush="{DynamicResource BorderBrush}"
                    BorderThickness="1"
                    Padding="6"
-                   Foreground="{StaticResource TextBrush}">
+                   Foreground="{DynamicResource TextBrush}">
             <ListBox.ItemTemplate>
               <DataTemplate>
                 <Grid>
@@ -159,7 +133,7 @@
                   <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
                   <TextBlock Grid.Column="1"
                              Text="{Binding SignalStrength, StringFormat={}{0} dBm}"
-                             Foreground="{StaticResource MutedBrush}"
+                             Foreground="{DynamicResource MutedBrush}"
                              FontSize="10" />
                 </Grid>
               </DataTemplate>
@@ -167,7 +141,7 @@
           </ListBox>
           <TextBlock Grid.Row="3"
                      Text="{Binding StatusText}"
-                     Foreground="{StaticResource MutedBrush}"
+                     Foreground="{DynamicResource MutedBrush}"
                      FontSize="10"
                      TextAlignment="Center"
                      TextWrapping="Wrap"
@@ -225,7 +199,7 @@
                          Margin="2,0,0,0" />
               <TextBlock Text="{Binding BatteryText}"
                          FontSize="10"
-                         Foreground="{StaticResource MutedBrush}"
+                         Foreground="{DynamicResource MutedBrush}"
                          VerticalAlignment="Center"
                          Margin="6,0,0,0" />
             </StackPanel>
@@ -251,7 +225,7 @@
               <TextBlock Text="{Binding ChamberText}"
                          FontSize="9"
                          FontWeight="SemiBold"
-                         Foreground="{StaticResource MutedBrush}"
+                         Foreground="{DynamicResource MutedBrush}"
                          HorizontalAlignment="Center"
                          TextAlignment="Center"
                          TextWrapping="Wrap"
@@ -289,7 +263,7 @@
                       HorizontalAlignment="Center"
                       VerticalAlignment="Top"
                       Command="{Binding StartStopCommand}"
-                      Background="#171A20"
+                      Background="{DynamicResource ScrollBarBrush}"
                       BorderBrush="{Binding ActiveProfileColor}"
                       BorderThickness="6">
                 <Button.Template>
@@ -386,7 +360,7 @@
                     <TextBlock Text="{Binding TemperatureCaption}"
                                FontSize="9"
                                FontWeight="SemiBold"
-                               Foreground="#B9BEC7"
+                               Foreground="{DynamicResource MutedBrush}"
                                HorizontalAlignment="Center"
                                Margin="0,-5,0,7" />
                     <TextBlock Text="{Binding SessionTimeText}"
@@ -456,7 +430,7 @@
                            HorizontalAlignment="Center" />
                 <TextBlock Text="TEMP"
                            FontSize="9"
-                           Foreground="{StaticResource MutedBrush}"
+                           Foreground="{DynamicResource MutedBrush}"
                            HorizontalAlignment="Center" />
               </StackPanel>
             </Button>
@@ -467,7 +441,7 @@
                          FontWeight="SemiBold"
                          HorizontalAlignment="Center" />
               <TextBlock Text="{Binding StatusText}"
-                         Foreground="{StaticResource MutedBrush}"
+                         Foreground="{DynamicResource MutedBrush}"
                          FontSize="11"
                          TextAlignment="Center"
                          TextWrapping="Wrap"
@@ -491,7 +465,7 @@
                            HorizontalAlignment="Center" />
                 <TextBlock Text="TIME"
                            FontSize="9"
-                           Foreground="{StaticResource MutedBrush}"
+                           Foreground="{DynamicResource MutedBrush}"
                            HorizontalAlignment="Center" />
               </StackPanel>
             </Button>
@@ -503,7 +477,7 @@
                     Margin="0,7,0,0"
                     VerticalAlignment="Top"
                     HorizontalAlignment="Center"
-                    Background="#111319"
+                    Background="{DynamicResource SunkenBrush}"
                     CornerRadius="10" />
             <ListBox x:Name="HomeProfileStrip"
                      AutomationProperties.AutomationId="HomeProfileSelector"
@@ -611,7 +585,7 @@
                        FontWeight="SemiBold"
                        TextAlignment="Center" />
             <TextBlock Text="Build and edit your own profiles. Slots are chosen from Home."
-                       Foreground="{StaticResource MutedBrush}"
+                       Foreground="{DynamicResource MutedBrush}"
                        FontSize="10"
                        TextAlignment="Center"
                        TextWrapping="Wrap"
@@ -625,7 +599,7 @@
                   <Canvas Width="226" Height="226">
                     <Ellipse Width="226"
                              Height="226"
-                             Fill="#171A20"
+                             Fill="{DynamicResource ScrollBarBrush}"
                              Stroke="{Binding EditorColorDisplay}"
                              StrokeThickness="3" />
                     <Path Data="M 113,3 A 110,110 0 0 1 223,113"
@@ -701,7 +675,7 @@
                                HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding TemperatureEditorLabel}"
                                FontSize="6"
-                               Foreground="{StaticResource MutedBrush}"
+                               Foreground="{DynamicResource MutedBrush}"
                                HorizontalAlignment="Center"
                                Margin="0,-3,0,2" />
                     <TextBlock Text="{Binding EditorDurationSeconds, StringFormat={}{0:0} SEC}"
@@ -711,14 +685,14 @@
                   </StackPanel>
                   <TextBlock Text="{Binding ActiveProfilePositionText}"
                              FontSize="6"
-                             Foreground="{StaticResource MutedBrush}"
+                             Foreground="{DynamicResource MutedBrush}"
                              HorizontalAlignment="Center"
                              VerticalAlignment="Bottom"
                              Margin="0,0,0,5" />
                 </Grid>
             </Grid>
 
-            <TextBlock Text="VAPOR LEVEL" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+            <TextBlock Text="VAPOR LEVEL" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
             <ComboBox ItemsSource="{Binding VaporLevels}"
                       SelectedItem="{Binding EditorVapor}"
                       ItemTemplate="{StaticResource DarkComboItemTemplate}"
@@ -731,13 +705,13 @@
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0">
-                <TextBlock Text="{Binding TemperatureEditorLabel}" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="{Binding TemperatureEditorLabel}" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
                 <TextBox AutomationProperties.AutomationId="ProfileTemperatureEditor"
                          Text="{Binding EditorTemperature, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,5,0,0" />
               </StackPanel>
               <StackPanel Grid.Column="2">
-                <TextBlock Text="SESSION TIME SEC" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="SESSION TIME SEC" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
                 <TextBox AutomationProperties.AutomationId="ProfileDurationEditor"
                          Text="{Binding EditorDurationSeconds, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,5,0,0" />
@@ -751,12 +725,12 @@
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0">
-                <TextBlock Text="{Binding BoostEditorLabel}" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="{Binding BoostEditorLabel}" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
                 <TextBox Text="{Binding EditorBoostTemperature, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,5,0,0" />
               </StackPanel>
               <StackPanel Grid.Column="2">
-                <TextBlock Text="TIME BOOST SEC" FontSize="9" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="TIME BOOST SEC" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
                 <TextBox Text="{Binding EditorBoostSeconds, UpdateSourceTrigger=PropertyChanged}"
                          Margin="0,5,0,0" />
               </StackPanel>
@@ -800,7 +774,7 @@
 
             <TextBlock Text="PROFILE MACRO"
                        FontSize="9"
-                       Foreground="{StaticResource MutedBrush}" />
+                       Foreground="{DynamicResource MutedBrush}" />
             <Grid Margin="0,5,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -816,7 +790,7 @@
                       Padding="12,7" />
             </Grid>
             <TextBlock Text="Selects this profile from Home while idle; it never starts heat."
-                       Foreground="{StaticResource MutedBrush}"
+                       Foreground="{DynamicResource MutedBrush}"
                        FontSize="8"
                        TextWrapping="Wrap"
                        Margin="0,5,0,10" />
@@ -838,7 +812,7 @@
                       Command="{Binding SaveProfileCommand}" />
             </Grid>
             <TextBlock Text="Local saves never heat or write; Write Profile remains firmware-gated."
-                       Foreground="{StaticResource MutedBrush}"
+                       Foreground="{DynamicResource MutedBrush}"
                        FontSize="9"
                        TextAlignment="Center"
                        TextWrapping="Wrap"
@@ -858,7 +832,7 @@
             </Grid>
             <TextBlock Text="Each heating profile is a JSON file with its selected colorway; loading never writes to the device."
                        FontSize="9"
-                       Foreground="{StaticResource MutedBrush}"
+                       Foreground="{DynamicResource MutedBrush}"
                        TextWrapping="Wrap"
                        Margin="0,4,0,7" />
             <Grid Margin="0,0,0,7">
@@ -891,7 +865,7 @@
                       Foreground="#FF8D95" />
             </Grid>
             <Border Height="64"
-                    Background="#111319"
+                    Background="{DynamicResource SunkenBrush}"
                     CornerRadius="10"
                     Padding="4"
                     Margin="0,0,0,8">
@@ -922,7 +896,7 @@
                       <TextBlock Grid.Row="1"
                                  Text="{Binding DetailText}"
                                  FontSize="7"
-                                 Foreground="{StaticResource MutedBrush}"
+                                 Foreground="{DynamicResource MutedBrush}"
                                  TextTrimming="CharacterEllipsis"
                                  Margin="0,1,0,3" />
                       <Border Grid.Row="2" CornerRadius="3">
@@ -1089,7 +1063,7 @@
             </Grid>
 
             <Border Height="70"
-                    Background="#111319"
+                    Background="{DynamicResource SunkenBrush}"
                     CornerRadius="10"
                     Padding="4"
                     Margin="0,0,0,6">
@@ -1144,11 +1118,11 @@
                        FontSize="19"
                        FontWeight="SemiBold" />
             <TextBlock Text="Local controls, no account or cloud connection."
-                       Foreground="{StaticResource MutedBrush}"
+                       Foreground="{DynamicResource MutedBrush}"
                        FontSize="10"
                        Margin="0,5,0,18" />
 
-            <Border Background="#171D1C"
+            <Border Background="{DynamicResource PanelBrush}"
                     BorderBrush="#30443F"
                     BorderThickness="1"
                     CornerRadius="14"
@@ -1166,35 +1140,27 @@
               </StackPanel>
             </Border>
 
-            <Border Background="{StaticResource PanelBrush}"
-                    BorderBrush="#292D36"
+            <Border Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="14"
                     Padding="14"
                     Margin="0,0,0,14">
               <StackPanel>
-                <TextBlock Text="CONNECTED DEVICE" FontSize="9" Foreground="{StaticResource MutedBrush}" />
-                <TextBlock Text="{Binding DeviceName}" FontSize="14" FontWeight="SemiBold" Margin="0,5,0,0" />
-                <TextBlock Text="{Binding FirmwareText}" FontSize="10" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0" />
-              </StackPanel>
-            </Border>
-
-            <Border Background="{StaticResource PanelBrush}"
-                    BorderBrush="#292D36"
-                    BorderThickness="1"
-                    CornerRadius="14"
-                    Padding="14"
-                    Margin="0,0,0,14">
-              <StackPanel>
-                <TextBlock Text="APP ACCENT"
-                           FontSize="9"
-                           Foreground="{DynamicResource AccentBrush}"
-                           FontWeight="SemiBold" />
+                <TextBlock Text="APP COLORS"
+                          FontSize="9"
+                          Foreground="{DynamicResource AccentBrush}"
+                          FontWeight="SemiBold" />
                 <TextBlock Text="Enter any six-digit RGB hex color. Valid colors preview immediately and save locally."
-                           FontSize="10"
-                           Foreground="{StaticResource MutedBrush}"
-                           TextWrapping="Wrap"
-                           Margin="0,5,0,9" />
+                          FontSize="10"
+                          Foreground="{DynamicResource MutedBrush}"
+                          TextWrapping="Wrap"
+                          Margin="0,5,0,9" />
+
+                <TextBlock Text="Accent"
+                          FontSize="9"
+                          Foreground="{DynamicResource MutedBrush}"
+                          Margin="0,0,0,4" />
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="34" />
@@ -1206,13 +1172,44 @@
                   <Border Width="34"
                           Height="32"
                           Background="{DynamicResource AccentBrush}"
+                          BorderBrush="{DynamicResource BorderBrush}"
+                          BorderThickness="1"
                           CornerRadius="6" />
                   <TextBox Grid.Column="2"
-                           AutomationProperties.AutomationId="AccentHexEditor"
-                           Text="{Binding AppAccentHex, UpdateSourceTrigger=PropertyChanged}"
-                           MaxLength="7"/>
+                          AutomationProperties.AutomationId="AccentHexEditor"
+                          Text="{Binding AppAccentHex, UpdateSourceTrigger=PropertyChanged}"
+                          MaxLength="7" />
                   <Button Grid.Column="4"
                           AutomationProperties.AutomationId="SaveAccentButton"
+                          Content="SAVE"
+                          Command="{Binding SavePreferencesCommand}"
+                          Padding="13,7" />
+                </Grid>
+
+                <TextBlock Text="Background"
+                          FontSize="9"
+                          Foreground="{DynamicResource MutedBrush}"
+                          Margin="0,11,0,4" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="34" />
+                    <ColumnDefinition Width="9" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="9" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <Border Width="34"
+                          Height="32"
+                          Background="{DynamicResource WindowBrush}"
+                          BorderBrush="{DynamicResource BorderBrush}"
+                          BorderThickness="1"
+                          CornerRadius="6" />
+                  <TextBox Grid.Column="2"
+                          AutomationProperties.AutomationId="BackgroundHexEditor"
+                          Text="{Binding AppBackgroundHex, UpdateSourceTrigger=PropertyChanged}"
+                          MaxLength="7" />
+                  <Button Grid.Column="4"
+                          AutomationProperties.AutomationId="SaveBackgroundButton"
                           Content="SAVE"
                           Command="{Binding SavePreferencesCommand}"
                           Padding="13,7" />
@@ -1220,8 +1217,8 @@
               </StackPanel>
             </Border>
 
-            <Border Background="{StaticResource PanelBrush}"
-                    BorderBrush="#292D36"
+            <Border Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     CornerRadius="14"
                     Padding="14"
@@ -1233,7 +1230,7 @@
                            FontWeight="SemiBold" />
                 <TextBlock Text="Shortcuts operate only from Home. Boost keys remain locked until the session is active."
                            FontSize="10"
-                           Foreground="{StaticResource MutedBrush}"
+                           Foreground="{DynamicResource MutedBrush}"
                            TextWrapping="Wrap"
                            Margin="0,5,0,10" />
                 <Grid>
@@ -1243,31 +1240,31 @@
                     <ColumnDefinition Width="*" />
                   </Grid.ColumnDefinitions>
                   <StackPanel Grid.Column="0">
-                    <TextBlock Text="PREVIOUS PROFILE" FontSize="8" Foreground="{StaticResource MutedBrush}" />
+                    <TextBlock Text="PREVIOUS PROFILE" FontSize="8" Foreground="{DynamicResource MutedBrush}" />
                     <ComboBox ItemsSource="{Binding ShortcutOptions}"
                               ItemTemplate="{StaticResource ShortcutOptionTemplate}"
                               SelectedValue="{Binding PreviousProfileKey}"
                               Margin="0,4,0,9" />
-                    <TextBlock Text="TEMP QUICK HIT" FontSize="8" Foreground="{StaticResource MutedBrush}" />
+                    <TextBlock Text="TEMP QUICK HIT" FontSize="8" Foreground="{DynamicResource MutedBrush}" />
                     <ComboBox ItemsSource="{Binding ShortcutOptions}"
                               ItemTemplate="{StaticResource ShortcutOptionTemplate}"
                               SelectedValue="{Binding TemperatureBoostKey}"
                               Margin="0,4,0,0" />
                   </StackPanel>
                   <StackPanel Grid.Column="2">
-                    <TextBlock Text="NEXT PROFILE" FontSize="8" Foreground="{StaticResource MutedBrush}" />
+                    <TextBlock Text="NEXT PROFILE" FontSize="8" Foreground="{DynamicResource MutedBrush}" />
                     <ComboBox ItemsSource="{Binding ShortcutOptions}"
                               ItemTemplate="{StaticResource ShortcutOptionTemplate}"
                               SelectedValue="{Binding NextProfileKey}"
                               Margin="0,4,0,9" />
-                    <TextBlock Text="TIME QUICK HIT" FontSize="8" Foreground="{StaticResource MutedBrush}" />
+                    <TextBlock Text="TIME QUICK HIT" FontSize="8" Foreground="{DynamicResource MutedBrush}" />
                     <ComboBox ItemsSource="{Binding ShortcutOptions}"
                               ItemTemplate="{StaticResource ShortcutOptionTemplate}"
                               SelectedValue="{Binding TimeBoostKey}"
                               Margin="0,4,0,0" />
                   </StackPanel>
                 </Grid>
-                <Border Height="1" Background="#30343D" Margin="0,13,0,11" />
+                <Border Height="1" Background="{DynamicResource InputBorderBrush}" Margin="0,13,0,11" />
                 <TextBlock Text="QUICK HIT AMOUNTS"
                            FontSize="9"
                            Foreground="{DynamicResource AccentBrush}"
@@ -1282,21 +1279,21 @@
                   <StackPanel Grid.Column="0">
                     <TextBlock Text="{Binding QuickHitTemperatureLabel}"
                                FontSize="8"
-                               Foreground="{StaticResource MutedBrush}" />
+                               Foreground="{DynamicResource MutedBrush}" />
                     <TextBox Text="{Binding QuickHitTemperature, UpdateSourceTrigger=PropertyChanged}"
                              Margin="0,4,0,0" />
                   </StackPanel>
                   <StackPanel Grid.Column="2">
                     <TextBlock Text="TIME INCREASE SEC"
                                FontSize="8"
-                               Foreground="{StaticResource MutedBrush}" />
+                               Foreground="{DynamicResource MutedBrush}" />
                     <TextBox Text="{Binding QuickHitTimeSeconds, UpdateSourceTrigger=PropertyChanged}"
                              Margin="0,4,0,0" />
                   </StackPanel>
                 </Grid>
                 <TextBlock Text="Saved values are checked against the connected device limits again on every quick hit."
                            FontSize="9"
-                           Foreground="{StaticResource MutedBrush}"
+                           Foreground="{DynamicResource MutedBrush}"
                            TextWrapping="Wrap"
                            Margin="0,8,0,0" />
                 <Button Content="SAVE CONTROL SETTINGS"
@@ -1305,7 +1302,7 @@
               </StackPanel>
             </Border>
 
-            <Border Background="#171D1C"
+            <Border Background="{DynamicResource PanelBrush}"
                     BorderBrush="#40574F"
                     BorderThickness="1"
                     CornerRadius="14"
@@ -1318,7 +1315,7 @@
                            FontWeight="SemiBold" />
                 <TextBlock Text="Finds nearby Peak e-rigs only. Handoff is blocked during heat, releases the current base first, and requires normal Windows pairing plus Puffco authentication. It cannot seize a device from another connection."
                            FontSize="10"
-                           Foreground="{StaticResource MutedBrush}"
+                           Foreground="{DynamicResource MutedBrush}"
                            TextWrapping="Wrap"
                            Margin="0,6,0,10" />
                 <Button AutomationProperties.AutomationId="HotSwapScanButton"
@@ -1335,10 +1332,10 @@
                           <ColumnDefinition Width="*" />
                           <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextBrush}" />
+                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextBrush}" />
                         <TextBlock Grid.Column="1"
                                    Text="{Binding SignalStrength, StringFormat={}{0} dBm}"
-                                   Foreground="{StaticResource MutedBrush}"
+                                   Foreground="{DynamicResource MutedBrush}"
                                    Margin="8,0,0,0" />
                       </Grid>
                     </DataTemplate>
@@ -1368,7 +1365,7 @@
                     Margin="0,10,0,0" />
 
             <TextBlock Text="desk_Puff never exposes firmware, bootloader, reset, raw-command, or arbitrary-file controls."
-                       Foreground="{StaticResource MutedBrush}"
+                       Foreground="{DynamicResource MutedBrush}"
                        FontSize="9"
                        TextAlignment="Center"
                        TextWrapping="Wrap"
@@ -1379,10 +1376,10 @@
 
       <Border Grid.Row="2"
               IsVisible="{Binding DeviceVisibility}"
-              BorderBrush="#22252C"
+              BorderBrush="{DynamicResource RaisedBrush}"
               BorderThickness="0,1,0,0"
               CornerRadius="0,0,20,20"
-              Background="#101217">
+              Background="{DynamicResource SunkenBrush}">
         <Grid Margin="16,8,16,9">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -1402,7 +1399,7 @@
               <Panel Height="26">
                 <TextBlock Text="≡" FontSize="25" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Panel>
-              <TextBlock Text="PROFILES" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
+              <TextBlock Text="PROFILES" FontSize="9" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
             </StackPanel>
           </Button>
           <Button Grid.Column="1"
@@ -1417,7 +1414,7 @@
               <Panel Height="26">
                 <TextBlock Text="●" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Panel>
-              <TextBlock Text="HOME" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
+              <TextBlock Text="HOME" FontSize="9" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
             </StackPanel>
           </Button>
           <Button Grid.Column="2"
@@ -1442,7 +1439,7 @@
                   </Ellipse.Fill>
                 </Ellipse>
               </Panel>
-              <TextBlock Text="COLOR" FontSize="9" Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
+              <TextBlock Text="COLOR" FontSize="9" Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center" Margin="0,3,0,0" />
             </StackPanel>
           </Button>
         </Grid>

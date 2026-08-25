@@ -226,6 +226,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private const string DefaultAppAccentHex = "#BB376A";
     private const string LegacyDefaultAppAccentHex = "#8CE9D2";
+    private const string DefaultAppBackgroundHex = "#0B0C10";
 
     private static readonly string[] DefaultProfileColors =
     [
@@ -313,6 +314,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string editorColorThree = string.Empty;
     private string editorColorFour = string.Empty;
     private string appAccentHex = DefaultAppAccentHex;
+    private string appBackgroundHex = DefaultAppBackgroundHex;
     private string paletteName = string.Empty;
     private ColorPaletteOption? selectedSavedColorPalette;
     private DeviceProfileOption? selectedDeviceProfile;
@@ -696,6 +698,19 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 IsHexColor(appAccentHex.Trim()))
             {
                 ApplyAppAccent(appAccentHex.Trim());
+            }
+        }
+    }
+
+    public string AppBackgroundHex
+    {
+        get => appBackgroundHex;
+        set
+        {
+            if (SetProperty(ref appBackgroundHex, value ?? string.Empty) &&
+                IsHexColor(appBackgroundHex.Trim()))
+            {
+                ApplyAppBackground(appBackgroundHex.Trim());
             }
         }
     }
@@ -1571,6 +1586,14 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(AppAccentHex));
         ApplyAppAccent(appAccentHex);
 
+        string savedBackgroundHex = preferences.AppBackgroundHex?.Trim() ?? string.Empty;
+        string normalizedBackgroundHex = savedBackgroundHex.ToUpperInvariant();
+        appBackgroundHex = IsHexColor(normalizedBackgroundHex)
+            ? normalizedBackgroundHex
+            : DefaultAppBackgroundHex;
+        OnPropertyChanged(nameof(AppBackgroundHex));
+        ApplyAppBackground(appBackgroundHex);
+
         Key[] shortcutKeys =
         [
             ParsePreferenceKey(preferences.PreviousProfileKey, Key.Left),
@@ -1781,13 +1804,38 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task SavePreferencesAsync(CancellationToken cancellationToken)
     {
+        // Both colors are validated before either is written back, so a bad
+        // value in one field can never leave the other half-applied. Each
+        // failure keeps its own exception rather than being folded into a
+        // single combined message, so the caller can tell the two apart.
         string normalizedAccentHex = AppAccentHex.Trim().ToUpperInvariant();
+        string normalizedBackgroundHex = AppBackgroundHex.Trim().ToUpperInvariant();
+
+        List<Exception> colorFailures = [];
         if (!IsHexColor(normalizedAccentHex))
         {
-            throw new InvalidOperationException("The app accent must be a six-digit RGB hex color such as #2878FF.");
+            colorFailures.Add(new InvalidOperationException(
+                "The app accent must be a six-digit RGB hex color such as #2878FF."));
+        }
+
+        if (!IsHexColor(normalizedBackgroundHex))
+        {
+            colorFailures.Add(new InvalidOperationException(
+                "The app background must be a six-digit RGB hex color such as #0B0C10."));
+        }
+
+        if (colorFailures.Count == 1)
+        {
+            throw colorFailures[0];
+        }
+
+        if (colorFailures.Count > 1)
+        {
+            throw new AggregateException(colorFailures);
         }
 
         AppAccentHex = normalizedAccentHex;
+        AppBackgroundHex = normalizedBackgroundHex;
 
         Key[] shortcutKeys =
         [
@@ -1822,6 +1870,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         UserPreferences preferences = new()
         {
             AppAccentHex = normalizedAccentHex,
+            AppBackgroundHex = normalizedBackgroundHex,
             PreviousProfileKey = PreviousProfileKey.ToString(),
             NextProfileKey = NextProfileKey.ToString(),
             TemperatureBoostKey = TemperatureBoostKey.ToString(),
@@ -2253,6 +2302,18 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void ShowError(Exception exception)
     {
+        // AggregateException.Message reads "One or more errors occurred. (...)",
+        // which buries the real text. Flatten it so each distinct failure is
+        // shown on its own instead.
+        if (exception is AggregateException aggregate)
+        {
+            string combined = string.Join(
+                " ",
+                aggregate.Flatten().InnerExceptions.Select(inner => inner.Message));
+            StatusText = $"Error: {Sanitize(combined)}";
+            return;
+        }
+
         StatusText = exception is DeviceSafetyException
             ? $"Safety lock: {exception.Message}"
             : $"Error: {Sanitize(exception.Message)}";
@@ -2580,6 +2641,55 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             : Color.FromRgb(246, 247, 249);
         application.Resources["AccentForegroundBrush"] = new SolidColorBrush(foreground);
     }
+
+    private static void ApplyAppBackground(string colorHex)
+    {
+        byte red = byte.Parse(colorHex.AsSpan(1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        byte green = byte.Parse(colorHex.AsSpan(3, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        byte blue = byte.Parse(colorHex.AsSpan(5, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+        Application? application = Application.Current;
+        if (application is null)
+        {
+            return;
+        }
+
+        application.Resources["WindowBrush"] = new SolidColorBrush(Color.FromRgb(red, green, blue));
+
+        // PanelBrush and RaisedBrush are the two surfaces stacked on top of the
+        // window. The offsets below reproduce the shipped dark palette exactly
+        // (#0B0C10 -> #161920 -> #21252E) so the default background is
+        // pixel-identical to what App.axaml declares. On a light background the
+        // offsets invert, otherwise every panel washes out into the window.
+        int perceivedBrightness = ((red * 299) + (green * 587) + (blue * 114)) / 1000;
+        int direction = perceivedBrightness >= 150 ? -1 : 1;
+
+        void Derive(string key, int redShift, int greenShift, int blueShift) =>
+            application.Resources[key] = new SolidColorBrush(Color.FromRgb(
+                ShiftChannel(red, redShift * direction),
+                ShiftChannel(green, greenShift * direction),
+                ShiftChannel(blue, blueShift * direction)));
+
+        Derive("SunkenBrush", 6, 7, 9);
+        Derive("ScrollBarBrush", 12, 14, 16);
+        Derive("PanelBrush", 11, 13, 16);
+        Derive("SubtleBrush", 17, 20, 23);
+        Derive("RaisedBrush", 22, 25, 30);
+        Derive("BorderBrush", 32, 35, 41);
+        Derive("InputBorderBrush", 37, 40, 47);
+        Derive("SelectionBrush", 37, 46, 43);
+        Derive("HoverBrush", 46, 52, 59);
+
+        application.Resources["TextBrush"] = new SolidColorBrush(perceivedBrightness >= 150
+            ? Color.FromRgb(11, 23, 21)
+            : Color.FromRgb(246, 247, 249));
+
+        application.Resources["MutedBrush"] = new SolidColorBrush(perceivedBrightness >= 150
+            ? Color.FromRgb(84, 92, 104)
+            : Color.FromRgb(169, 176, 188));
+    }
+
+    private static byte ShiftChannel(byte channel, int delta) =>
+        (byte)Math.Clamp(channel + delta, 0, 255);
 
     private static bool IsHexColor(string color) =>
         color.Length == 7 &&

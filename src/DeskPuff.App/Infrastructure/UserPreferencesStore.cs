@@ -36,6 +36,8 @@ internal sealed record UserPreferences
 {
     public string AppAccentHex { get; init; } = "#BB376A";
 
+    public string AppBackgroundHex { get; init; } = "#0B0C10";
+
     public string PreviousProfileKey { get; init; } = "Left";
 
     public string NextProfileKey { get; init; } = "Right";

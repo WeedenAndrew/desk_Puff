@@ -11,6 +11,13 @@
     <SolidColorBrush x:Key="AccentBrush" Color="#BB376A" />
     <SolidColorBrush x:Key="AccentForegroundBrush" Color="#F6F7F9" />
     <SolidColorBrush x:Key="DangerBrush" Color="#F24D59" />
+    <SolidColorBrush x:Key="SunkenBrush" Color="#111319" />
+    <SolidColorBrush x:Key="SubtleBrush" Color="#1C2027" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#2B2F39" />
+    <SolidColorBrush x:Key="InputBorderBrush" Color="#30343F" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="#303A3B" />
+    <SolidColorBrush x:Key="HoverBrush" Color="#39404B" />
+    <SolidColorBrush x:Key="ScrollBarBrush" Color="#171A20" />
   </Application.Resources>
 
   <Application.Styles>
@@ -22,7 +29,7 @@
     <Style Selector="Button">
       <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
       <Setter Property="Background" Value="{DynamicResource RaisedBrush}" />
-      <Setter Property="BorderBrush" Value="#2B2F39" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="FontFamily" Value="avares://Avalonia.Fonts.Inter/Assets#Inter" />
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -44,7 +51,7 @@
     <Style Selector="TextBox">
       <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
       <Setter Property="Background" Value="{DynamicResource RaisedBrush}" />
-      <Setter Property="BorderBrush" Value="#30343F" />
+      <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
       <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
       <Setter Property="Padding" Value="10,7" />
       <Setter Property="FontFamily" Value="avares://Avalonia.Fonts.Inter/Assets#Inter" />
@@ -53,7 +60,7 @@
     <Style Selector="ComboBox">
       <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
       <Setter Property="Background" Value="{DynamicResource RaisedBrush}" />
-      <Setter Property="BorderBrush" Value="#30343F" />
+      <Setter Property="BorderBrush" Value="{DynamicResource InputBorderBrush}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="10,7" />
       <Setter Property="FontSize" Value="11" />
@@ -67,13 +74,13 @@
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
     <Style Selector="ComboBoxItem:selected">
-      <Setter Property="Background" Value="#303A3B" />
+      <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
     </Style>
     <Style Selector="ComboBoxItem:pointerover">
-      <Setter Property="Background" Value="#39404B" />
+      <Setter Property="Background" Value="{DynamicResource HoverBrush}" />
     </Style>
     <Style Selector="ScrollBar">
-      <Setter Property="Background" Value="#171A20" />
+      <Setter Property="Background" Value="{DynamicResource ScrollBarBrush}" />
     </Style>
   </Application.Styles>
 </Application>

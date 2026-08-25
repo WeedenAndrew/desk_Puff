@@ -5,7 +5,9 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Avalonia.Win32;
 using DeskPuff.App.ViewModels;
 
 namespace DeskPuff.App;
@@ -19,6 +21,7 @@ public sealed partial class MainWindow : Window
     private double profileDragStartOffset;
     private bool profileDragging;
     private bool profileDragMoved;
+    private DateTime lastTitleBarPress = DateTime.MinValue;
 
     /// <summary>
     /// Required by the Avalonia XAML compiler, which needs a public
@@ -137,8 +140,63 @@ public sealed partial class MainWindow : Window
     private static ScrollViewer? ProfileStripScroll(ListBox strip) =>
         strip.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
 
+    private const uint WmSysCommand = 0x0112;
+    private const uint WmNcLeftButtonDoubleClick = 0x00A3;
+    private const long ScMaximize = 0xF030;
+
+    /// <summary>
+    /// Refuses every route to a maximized or full screen window. CanResize
+    /// already hides the affordance, but it does not stop Aero Snap, Win+Up, or
+    /// a caption double click, all of which arrive as a system command rather
+    /// than through Avalonia. Swallowing the message before DefWindowProc sees
+    /// it is the only place that catches all three.
+    /// </summary>
+    private static IntPtr BlockMaximizeMessages(
+        IntPtr handle,
+        uint message,
+        IntPtr wParam,
+        IntPtr lParam,
+        ref bool handled)
+    {
+        // Windows packs status bits into the low nibble of wParam, so the
+        // command has to be masked out before it is compared.
+        bool maximizing = message == WmSysCommand && (wParam.ToInt64() & 0xFFF0) == ScMaximize;
+        if (maximizing || message == WmNcLeftButtonDoubleClick)
+        {
+            handled = true;
+        }
+
+        return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// Backstop for anything that sets the state without going through the
+    /// window message, such as an external tool or a shell extension. Posting
+    /// rather than assigning inline avoids re-entering the property changed
+    /// pass while the platform implementation is still mid update.
+    /// </summary>
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property != WindowStateProperty)
+        {
+            return;
+        }
+
+        if (change.GetNewValue<WindowState>() is WindowState.Maximized or WindowState.FullScreen)
+        {
+            Dispatcher.UIThread.Post(() => WindowState = WindowState.Normal);
+        }
+    }
+
     private async void WindowOpened(object? sender, EventArgs e)
     {
+        if (OperatingSystem.IsWindows())
+        {
+            Win32Properties.AddWndProcHookCallback(this, BlockMaximizeMessages);
+        }
+
         try
         {
             await viewModel.InitializeAsync();
@@ -171,9 +229,16 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (e.ClickCount == 2)
+        // BeginMoveDrag hands off to a modal loop inside user32, during which
+        // Avalonia pumps no input and so never increments ClickCount. Rapid
+        // clicks therefore all arrive reporting ClickCount 1, while Windows
+        // resolves them into WM_NCLBUTTONDBLCLK on the caption and maximizes.
+        // Timing the presses here is the only reliable way to spot the repeat.
+        DateTime now = DateTime.UtcNow;
+        TimeSpan sinceLastPress = now - lastTitleBarPress;
+        lastTitleBarPress = now;
+        if (sinceLastPress < TimeSpan.FromMilliseconds(500))
         {
-            ToggleMaximize();
             e.Handled = true;
             return;
         }
@@ -193,23 +258,6 @@ public sealed partial class MainWindow : Window
 
     private void MinimizeButtonClick(object? sender, RoutedEventArgs e) =>
         WindowState = WindowState.Minimized;
-
-    private void MaximizeButtonClick(object? sender, RoutedEventArgs e)
-    {
-        ToggleMaximize();
-        Button? maximize = this.FindControl<Button>("MaximizeButton");
-        if (maximize is not null)
-        {
-            bool maximized = WindowState == WindowState.Maximized;
-            maximize.Content = maximized ? "❐" : "□";
-            ToolTip.SetTip(maximize, maximized ? "Restore" : "Maximize");
-        }
-    }
-
-    private void ToggleMaximize() =>
-        WindowState = WindowState == WindowState.Maximized
-            ? WindowState.Normal
-            : WindowState.Maximized;
 
     private void CloseButtonClick(object? sender, RoutedEventArgs e) => Close();
 
