@@ -1,5 +1,6 @@
 bin/
 obj/
+target/
 .vs/
 .vscode/
 .idea/
