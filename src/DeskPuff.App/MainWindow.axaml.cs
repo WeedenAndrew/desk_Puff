@@ -145,12 +145,31 @@ public sealed partial class MainWindow : Window
     private const long ScMaximize = 0xF030;
 
     /// <summary>
-    /// Refuses every route to a maximized or full screen window. CanResize
-    /// already hides the affordance, but it does not stop Aero Snap, Win+Up, or
-    /// a caption double click, all of which arrive as a system command rather
-    /// than through Avalonia. Swallowing the message before DefWindowProc sees
-    /// it is the only place that catches all three.
+    /// Refuses every route to a maximized or full screen window that arrives as
+    /// a system command rather than through Avalonia.
     /// </summary>
+    /// <remarks>
+    /// What a full message trace of this hook actually showed, so the next
+    /// person does not rediscover it:
+    ///
+    /// <list type="bullet">
+    /// <item>SC_MAXIMIZE never arrives. Every WM_SYSCOMMAND seen during a title
+    /// bar drag was 0xF012, which masks to SC_MOVE, posted by BeginMoveDrag.</item>
+    /// <item>WM_NCLBUTTONDBLCLK never arrives either. WindowDecorations="None"
+    /// means there is no non client caption to double click, so that branch has
+    /// nothing to catch on this path.</item>
+    /// <item>WM_GETMINMAXINFO arrives in bulk, 266 times inside two drags, and
+    /// only ever inside DefWindowProc's modal move loop.</item>
+    /// </list>
+    ///
+    /// Answering WM_GETMINMAXINFO with a clamped ptMaxSize and ptMaxTrackSize
+    /// was tried and measured, and does not hold the size. Neither does setting
+    /// MaxWidth and MaxHeight on the Window. With the OnPropertyChanged
+    /// backstop below disabled, SW_MAXIMIZE still took the window to the full
+    /// 2560x1392 work area in both cases. That backstop is what is really
+    /// holding the size today; the two branches here cost nothing and cover
+    /// routes the trace did not exercise.
+    /// </remarks>
     private static IntPtr BlockMaximizeMessages(
         IntPtr handle,
         uint message,
