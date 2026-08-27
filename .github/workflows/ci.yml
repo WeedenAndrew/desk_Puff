@@ -20,6 +20,19 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Verify Rust toolchain
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: Build BLE sidecar
+        run: cargo build --release --locked
+        working-directory: native/desk-puff-ble
+
+      - name: Test BLE sidecar
+        run: cargo test --release --locked
+        working-directory: native/desk-puff-ble
+
       - name: Install .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -42,10 +55,31 @@ jobs:
       - name: Publish self-contained smoke artifact
         run: dotnet publish .\src\DeskPuff.App\DeskPuff.App.csproj --configuration Release --no-restore -p:PublishProfile=Windows-x64
 
-      - name: Upload executable
+      - name: Assemble runnable package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publishDirectory = 'artifacts\publish\win-x64'
+          $bleDirectory = Join-Path $publishDirectory 'ble'
+
+          New-Item -ItemType Directory -Path $bleDirectory -Force | Out-Null
+          Copy-Item -LiteralPath 'native\desk-puff-ble\target\release\desk-puff-ble.exe' -Destination $bleDirectory -Force
+          Copy-Item -Path 'tools\capture\*' -Destination $publishDirectory -Force
+          Get-ChildItem -LiteralPath $publishDirectory -Filter '*.pdb' -File | Remove-Item -Force
+
+          $files = @(Get-ChildItem -LiteralPath $publishDirectory -Recurse -File | Sort-Object FullName)
+          foreach ($file in $files) {
+            $relativePath = [System.IO.Path]::GetRelativePath($publishDirectory, $file.FullName)
+            '{0}|{1}' -f $relativePath, $file.Length
+          }
+
+          $totalBytes = ($files | Measure-Object -Property Length -Sum).Sum
+          'TOTAL|{0}|{1}' -f $files.Count, $totalBytes
+
+      - name: Upload runnable package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desk_Puff-win-x64
-          path: artifacts/publish/win-x64/desk_Puff.exe
+          path: artifacts/publish/win-x64/
           if-no-files-found: error
           retention-days: 14
