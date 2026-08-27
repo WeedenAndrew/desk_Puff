@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -19,6 +19,7 @@ const SERVICE_UUID: Uuid = uuid!("e276967f-ea8a-478a-a92e-d78f5dd15dd5");
 const VERSION_UUID: Uuid = uuid!("05434bca-cc7f-4ef6-bbb3-b1c520b9800c");
 const COMMAND_UUID: Uuid = uuid!("60133d5c-5727-4f2c-9697-d842c5292a3c");
 const REPLY_UUID: Uuid = uuid!("8dc5ec05-8f7d-45ad-99db-3fbde65dbd9c");
+const EVENT_UUID: Uuid = uuid!("43312cd1-7d34-46ce-a7d3-0a98fd9b4cb8");
 const MAXIMUM_REQUEST_BYTES: usize = 4096;
 const MAXIMUM_RESPONSE_BYTES: usize = 64 * 1024;
 const MAXIMUM_FRAME_BYTES: usize = 515;
@@ -239,6 +240,59 @@ impl BleState {
         Ok(())
     }
 
+    async fn listen(&self, duration: Duration) -> Result<(), Box<dyn Error + Send + Sync>> {
+        if duration.is_zero() || duration > Duration::from_millis(120_000) {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Listen duration is outside the allowed range.").into());
+        }
+
+        let connection = self.connection.as_ref().ok_or_else(not_connected)?;
+        let event = required_characteristic(
+            &connection.peripheral.characteristics(),
+            EVENT_UUID,
+            CharPropFlags::NOTIFY,
+        )?;
+        let mut notifications = connection.peripheral.notifications().await?;
+        connection.peripheral.subscribe(&connection.reply).await?;
+        connection.peripheral.subscribe(&event).await?;
+
+        let started = Instant::now();
+        let listen_result = tokio::time::timeout(duration, async {
+            while let Some(notification) = notifications.next().await {
+                let elapsed_milliseconds = started.elapsed().as_millis();
+                let notification_hex = notification
+                    .value
+                    .iter()
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let notification_ascii = notification
+                    .value
+                    .iter()
+                    .map(|byte| {
+                        if byte.is_ascii_graphic() || *byte == b' ' {
+                            char::from(*byte)
+                        } else {
+                            '.'
+                        }
+                    })
+                    .collect::<String>();
+                eprintln!(
+                    "Lorax listen: elapsedMilliseconds={elapsed_milliseconds} uuid={} length={} hex={notification_hex} ascii=\"{notification_ascii}\"",
+                    notification.uuid,
+                    notification.value.len()
+                );
+            }
+        })
+        .await;
+
+        connection.peripheral.unsubscribe(&event).await?;
+        match listen_result {
+            Ok(()) => eprintln!("Lorax listen ended: notification stream closed"),
+            Err(_) => eprintln!("Lorax listen ended: duration elapsed"),
+        }
+        Ok(())
+    }
+
     async fn run_command(
         &self,
         frame: &[u8],
@@ -394,6 +448,12 @@ async fn execute(state: &mut BleState, request: &Request) -> Result<Response, Bo
         }
         "disconnect" => state.disconnect().await?,
         "triggerBonding" => state.trigger_bonding().await?,
+        "listen" => {
+            let milliseconds = request.duration_milliseconds.ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "Listen duration is required.")
+            })?;
+            state.listen(Duration::from_millis(milliseconds)).await?;
+        }
         "runCommand" => {
             let frame = BASE64.decode(request.frame_base64.as_deref().ok_or_else(|| {
                 io::Error::new(io::ErrorKind::InvalidInput, "Lorax frame is required.")
