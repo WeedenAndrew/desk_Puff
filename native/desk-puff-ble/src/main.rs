@@ -223,9 +223,31 @@ impl BleState {
             .peripheral
             .write(&connection.command, frame, WriteType::WithoutResponse)
             .await?;
+        let frame_sequence = u16::from_le_bytes([frame[0], frame[1]]);
+        let frame_hex = frame
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        eprintln!(
+            "Lorax write: sequence={frame_sequence} opcode=0x{:02X} length={} hex={frame_hex}",
+            frame[2],
+            frame.len()
+        );
 
         tokio::time::timeout(Duration::from_secs(3), async {
             while let Some(notification) = notifications.next().await {
+                let notification_hex = notification
+                    .value
+                    .iter()
+                    .map(|byte| format!("{byte:02X}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                eprintln!(
+                    "Lorax notification: uuid={} length={} hex={notification_hex}",
+                    notification.uuid,
+                    notification.value.len()
+                );
                 if notification.uuid != REPLY_UUID || notification.value.len() < 3 {
                     continue;
                 }
@@ -234,10 +256,14 @@ impl BleState {
                     return Ok(notification.value);
                 }
             }
+            eprintln!("Lorax notification window ended: stream closed");
             Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Bluetooth notifications ended before the Lorax reply."))
         })
         .await
-        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Lorax reply timed out."))?
+        .map_err(|_| {
+            eprintln!("Lorax notification window ended: timeout");
+            io::Error::new(io::ErrorKind::TimedOut, "Lorax reply timed out.")
+        })?
         .map_err(Into::into)
     }
 }
