@@ -337,6 +337,15 @@ public sealed class LoraxDeviceClient : IDeviceClient
                 LoraxPaths.BatteryChargeState,
                 1,
                 cancellationToken).ConfigureAwait(false)).Span[0];
+            // Confirmed on a PEAKSHI V2, firmware 39, 2026-08-27: /p/bat/chg/stat
+            // reads 4 while off the charger, and this expression correctly
+            // reports false for it.
+            //
+            // What 0 and 1 mean is still assumed rather than observed. No value
+            // has ever been read from a charging device, so the positive case
+            // is unverified and a wrong guess here shows a charging icon that
+            // never appears. Capture /p/bat/chg/stat on the charger and either
+            // confirm this line or replace it with the real value.
             isCharging = chargeState is 0 or 1;
             lastBatteryRead = DateTimeOffset.UtcNow;
         }
@@ -441,19 +450,28 @@ public sealed class LoraxDeviceClient : IDeviceClient
                 (await ReadAsync(supportedBatteryPath, 4, cancellationToken).ConfigureAwait(false)).Span);
         }
 
+        // State of charge first, and capacity only as a fallback.
+        //
+        // These were the other way round, which looked harmless because both
+        // paths read cleanly. On a PEAKSHI V2, /p/bat/cap answers 6018.443 —
+        // the pack's capacity, a fixed property of the hardware and not a
+        // charge level at all. The caller clamps to 0..100, so that pinned the
+        // reading at 100% forever and the battery appeared not to update.
+        // /p/bat/soc on the same device reads 64.679, which is the percentage
+        // actually wanted. Measured 2026-08-27.
         try
-        {
-            double capacity = LoraxValueCodec.ReadSingle(
-                (await ReadAsync(LoraxPaths.BatteryCapacity, 4, cancellationToken).ConfigureAwait(false)).Span);
-            supportedBatteryPath = LoraxPaths.BatteryCapacity;
-            return capacity;
-        }
-        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidDataException)
         {
             double stateOfCharge = LoraxValueCodec.ReadSingle(
                 (await ReadAsync(LoraxPaths.BatteryStateOfCharge, 4, cancellationToken).ConfigureAwait(false)).Span);
             supportedBatteryPath = LoraxPaths.BatteryStateOfCharge;
             return stateOfCharge;
+        }
+        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidDataException)
+        {
+            double capacity = LoraxValueCodec.ReadSingle(
+                (await ReadAsync(LoraxPaths.BatteryCapacity, 4, cancellationToken).ConfigureAwait(false)).Span);
+            supportedBatteryPath = LoraxPaths.BatteryCapacity;
+            return capacity;
         }
     }
 
@@ -604,6 +622,18 @@ public sealed class LoraxDeviceClient : IDeviceClient
         }
     }
 
+    /// <summary>
+    /// Maps the byte at <c>/p/htr/chmt</c> to a chamber.
+    /// </summary>
+    /// <remarks>
+    /// <c>2 =&gt; ThreeDXL</c> is **confirmed on hardware**: a PEAKSHI V2 with a
+    /// 3DXL fitted reads 2, verified 2026-08-27. Do not "correct" it.
+    ///
+    /// The other four arms are still assumptions carried over from the original
+    /// implementation. In particular nothing has ever read this path with the
+    /// chamber removed, so <c>0 =&gt; None</c> is unverified and it is not known
+    /// whether this path reports presence at all.
+    /// </remarks>
     private static ChamberKind MapChamber(byte value) => value switch
     {
         0 => ChamberKind.None,
