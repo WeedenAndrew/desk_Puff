@@ -167,6 +167,15 @@ impl BleState {
         }
 
         let characteristics = peripheral.characteristics();
+        for characteristic in characteristics
+            .iter()
+            .filter(|characteristic| characteristic.service_uuid == SERVICE_UUID)
+        {
+            eprintln!(
+                "Lorax characteristic: uuid={} properties={:?}",
+                characteristic.uuid, characteristic.properties
+            );
+        }
         let version = required_characteristic(&characteristics, VERSION_UUID, CharPropFlags::READ)?;
         let command = required_characteristic(
             &characteristics,
@@ -207,7 +216,26 @@ impl BleState {
 
     async fn trigger_bonding(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
         let connection = self.connection.as_ref().ok_or_else(not_connected)?;
-        let _ = connection.peripheral.read(&connection.version).await?;
+        let version = connection.peripheral.read(&connection.version).await?;
+        let version_hex = version
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let version_ascii = version
+            .iter()
+            .map(|byte| {
+                if byte.is_ascii_graphic() || *byte == b' ' {
+                    char::from(*byte)
+                } else {
+                    '.'
+                }
+            })
+            .collect::<String>();
+        eprintln!(
+            "Lorax version: length={} hex={version_hex} ascii=\"{version_ascii}\"",
+            version.len()
+        );
         Ok(())
     }
 
@@ -219,9 +247,10 @@ impl BleState {
         validate_frame(frame, expected_sequence)?;
         let connection = self.connection.as_ref().ok_or_else(not_connected)?;
         let mut notifications = connection.peripheral.notifications().await?;
+        // Diagnostic trial only, not a transport decision: test whether the device replies to acknowledged writes.
         connection
             .peripheral
-            .write(&connection.command, frame, WriteType::WithoutResponse)
+            .write(&connection.command, frame, WriteType::WithResponse)
             .await?;
         let frame_sequence = u16::from_le_bytes([frame[0], frame[1]]);
         let frame_hex = frame
