@@ -33,8 +33,19 @@ echo(
 echo ==== 1/2  publishing ====
 echo    This is incremental. First run takes a while; later runs are quick.
 echo(
+REM Restore separately and publish with --no-restore. A self-contained publish
+REM makes the SDK add Microsoft.NET.ILLink.Tasks as a Direct reference and
+REM rewrite packages.lock.json, which the project itself never declares. CI then
+REM fails NU1004 comparing the two. Publishing without a restore avoids it.
+%DOTNET% restore .\desk_Puff.slnx --locked-mode
+if errorlevel 1 (
+  echo(
+  echo    Restore failed. Nothing was published.
+  goto :end
+)
+
 %DOTNET% publish .\src\DeskPuff.App\DeskPuff.App.csproj ^
-  -c Release -p:PublishProfile=Windows-x64
+  -c Release --no-restore -p:PublishProfile=Windows-x64
 if errorlevel 1 (
   echo(
   echo    Publish failed. Nothing was launched.
