@@ -132,10 +132,10 @@ public sealed class LoraxDeviceClient : IDeviceClient
                 index,
                 name,
                 temperature,
-                TimeSpan.FromSeconds(durationSeconds),
+                SecondsOrZero(durationSeconds),
                 VaporLevel.Standard,
                 boostTemperature,
-                TimeSpan.FromSeconds(boostSeconds),
+                SecondsOrZero(boostSeconds),
                 colorPalette[0])
             {
                 ColorPalette = colorPalette,
@@ -367,7 +367,7 @@ public sealed class LoraxDeviceClient : IDeviceClient
                 (await ReadAsync(LoraxPaths.ActiveProfileTemperature, 4, cancellationToken).ConfigureAwait(false)).Span);
             double durationSeconds = LoraxValueCodec.ReadSingle(
                 (await ReadAsync(LoraxPaths.ActiveProfileTime, 4, cancellationToken).ConfigureAwait(false)).Span);
-            profileDuration = TimeSpan.FromSeconds(Math.Max(durationSeconds, 0));
+            profileDuration = SecondsOrZero(durationSeconds);
         }
 
         double currentTemperature = LoraxValueCodec.ReadSingle(
@@ -378,7 +378,7 @@ public sealed class LoraxDeviceClient : IDeviceClient
             (await ReadAsync(LoraxPaths.StateElapsedTime, 4, cancellationToken).ConfigureAwait(false)).Span);
         bool verified = CompatibilityCatalog.IsHardwareVerified(identity);
         DeviceOperatingState operatingState = MapOperatingState(operatingValue);
-        TimeSpan stateTotal = TimeSpan.FromSeconds(Math.Max(totalSeconds, 0));
+        TimeSpan stateTotal = SecondsOrZero(totalSeconds);
 
         return new DeviceSnapshot(
             verified
@@ -399,11 +399,39 @@ public sealed class LoraxDeviceClient : IDeviceClient
             operatingState is DeviceOperatingState.Preheating or DeviceOperatingState.Active
                 ? stateTotal
                 : profileDuration,
-            TimeSpan.FromSeconds(Math.Max(elapsedSeconds, 0)),
+            SecondsOrZero(elapsedSeconds),
             true,
             verified,
             verified ? null : "Read-only until this exact firmware passes hardware safety verification.");
     }
+
+    /// <summary>
+    /// Turns a duration the device reported into a <see cref="TimeSpan"/>, or
+    /// zero when the value cannot be one.
+    /// </summary>
+    /// <remarks>
+    /// A four byte read that does not decode to a sensible float yields a
+    /// number no <see cref="TimeSpan"/> can hold, and
+    /// <see cref="TimeSpan.FromSeconds(double)"/> throws rather than
+    /// saturating. That exception escaped snapshot building, stopped the
+    /// refresh, and left the interface frozen on stale values until the device
+    /// was reconnected — which read as three separate faults and was one.
+    ///
+    /// <c>Math.Max(value, 0)</c> did not help: it returns NaN when given NaN,
+    /// and does nothing about a value that is merely enormous. Temperature was
+    /// already guarded with <c>double.IsFinite</c> a few lines below. These
+    /// three were not.
+    /// </remarks>
+    private static TimeSpan SecondsOrZero(double seconds) =>
+        double.IsFinite(seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(Math.Min(seconds, MaximumReportedDurationSeconds))
+            : TimeSpan.Zero;
+
+    /// <summary>
+    /// A day. Generous for a device whose cycles run in seconds, and low enough
+    /// that nothing it reports can overflow a <see cref="TimeSpan"/>.
+    /// </summary>
+    private const double MaximumReportedDurationSeconds = 86_400;
 
     private async Task<double> ReadBatteryAsync(CancellationToken cancellationToken)
     {
