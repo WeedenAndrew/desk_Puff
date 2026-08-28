@@ -306,6 +306,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private DeviceCandidate? connectedCandidate;
     private AppPage currentPage;
     private string statusText = "Ready to scan";
+    private bool statusIsError;
     private string editorName = string.Empty;
     private double editorTemperature = 500;
     private double editorDurationSeconds = 40;
@@ -620,7 +621,27 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string StatusText
     {
         get => statusText;
-        private set => SetProperty(ref statusText, value);
+        private set
+        {
+            SetProperty(ref statusText, value);
+
+            // Every ordinary status assignment clears the error styling, and the
+            // few paths that mean something went wrong set StatusIsError back to
+            // true straight afterwards. Doing it in this order is what keeps the
+            // twenty unrelated assignment sites from each having to know the
+            // flag exists.
+            StatusIsError = false;
+        }
+    }
+
+    /// <summary>
+    /// Whether <see cref="StatusText"/> is currently reporting a failure, so the
+    /// view can colour it accordingly.
+    /// </summary>
+    public bool StatusIsError
+    {
+        get => statusIsError;
+        private set => SetProperty(ref statusIsError, value);
     }
 
     public string EditorName
@@ -2293,6 +2314,10 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     stopPolling: false,
                     disconnectStatus: "Device disconnected after repeated communication failures",
                     cancellationToken: CancellationToken.None);
+
+                // DisconnectAsync assigns StatusText, which clears the flag, so
+                // this has to come after it rather than before.
+                StatusIsError = true;
                 return;
             }
         }
@@ -2352,12 +2377,14 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 " ",
                 aggregate.Flatten().InnerExceptions.Select(inner => inner.Message));
             StatusText = $"Error: {Sanitize(combined)}";
+            StatusIsError = true;
             return;
         }
 
         StatusText = exception is DeviceSafetyException
             ? $"Safety lock: {exception.Message}"
             : $"Error: {Sanitize(exception.Message)}";
+        StatusIsError = true;
     }
 
     private void NotifySnapshotProperties()

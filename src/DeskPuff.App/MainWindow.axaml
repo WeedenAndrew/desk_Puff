@@ -139,22 +139,40 @@
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-          <TextBlock Grid.Row="3"
-                     Text="{Binding StatusText}"
-                     Foreground="{DynamicResource MutedBrush}"
-                     FontSize="10"
-                     TextAlignment="Center"
-                     TextWrapping="Wrap"
-                     Margin="0,14,0,12" />
-          <Grid Grid.Row="4">
+          <Grid Grid.Row="4" Margin="0,14,0,0">
             <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
               <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="10" />
-              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Button Grid.Column="0"
                     Content="SCAN AGAIN"
                     Command="{Binding ScanCommand}" />
+
+            <!-- The status sits between the two buttons and is drawn twice,
+                 once muted and once in the danger colour, with only one visible
+                 at a time. Avalonia has no data trigger, and a converter or a
+                 style class for a single colour swap costs more than the
+                 duplicate line does. -->
+            <TextBlock Grid.Column="1"
+                       Text="{Binding StatusText}"
+                       IsVisible="{Binding !StatusIsError}"
+                       Foreground="{DynamicResource MutedBrush}"
+                       FontSize="10"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center"
+                       Margin="10,0,10,0" />
+            <TextBlock Grid.Column="1"
+                       Text="{Binding StatusText}"
+                       IsVisible="{Binding StatusIsError}"
+                       Foreground="{DynamicResource DangerBrush}"
+                       FontSize="10"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center"
+                       Margin="10,0,10,0" />
+
             <Button Grid.Column="2"
                     Content="CONNECT"
                     Command="{Binding ConnectCommand}"
