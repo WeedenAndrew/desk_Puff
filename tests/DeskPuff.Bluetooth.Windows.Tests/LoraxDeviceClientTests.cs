@@ -33,6 +33,27 @@ public sealed class LoraxDeviceClientTests
     }
 
     [TestMethod]
+    public async Task Connect_ReportsBatteryPercentageFromStateOfChargeInsteadOfCapacity()
+    {
+        FakeLoraxTransport transport = new();
+        await using LoraxDeviceClient client = new(transport);
+
+        await client.ConnectAsync(
+            new DeviceCandidate("test-peak", "PUFFCO PEAK", -40),
+            CancellationToken.None);
+
+        Assert.AreEqual(
+            64.7d,
+            client.Snapshot.BatteryPercent,
+            0.1d,
+            "BatteryPercent must come from state of charge.");
+        Assert.AreNotEqual(
+            100d,
+            client.Snapshot.BatteryPercent,
+            "Capacity must not be treated as a percentage.");
+    }
+
+    [TestMethod]
     public async Task Refresh_ReadsOnlyChangingTelemetryWithinBatteryInterval()
     {
         FakeLoraxTransport transport = new();
@@ -203,7 +224,8 @@ public sealed class LoraxDeviceClientTests
                 LoraxPaths.ModelCode => UInt32(ModelCode),
                 LoraxPaths.DeviceName => Encoding.UTF8.GetBytes(DeviceName),
                 LoraxPaths.FirmwareVersion => [0],
-                LoraxPaths.BatteryCapacity => Single(82),
+                LoraxPaths.BatteryStateOfCharge => Single(64.679f),
+                LoraxPaths.BatteryCapacity => Single(6018.443f),
                 LoraxPaths.BatteryChargeState => [4],
                 LoraxPaths.ChamberType => [2],
                 LoraxPaths.OperatingState => [(byte)DeviceOperatingState.Idle],
