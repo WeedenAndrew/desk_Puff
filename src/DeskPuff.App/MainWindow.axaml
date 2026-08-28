@@ -618,53 +618,29 @@
                     <Ellipse Width="226"
                              Height="226"
                              Fill="{DynamicResource ScrollBarBrush}"
-                             Stroke="{Binding EditorColorDisplay}"
+                             Stroke="{Binding EditorPrimaryColor}"
                              StrokeThickness="3" />
                     <Path Data="M 113,3 A 110,110 0 0 1 223,113"
+                          Stroke="{Binding EditorProfileArcOne}"
                           StrokeThickness="5"
-                          StrokeLineCap="Round">
-                      <Path.Stroke>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                          <GradientStop Color="{Binding EditorColorDisplay}" Offset="0" />
-                          <GradientStop Color="{Binding EditorColorTwoDisplay}" Offset="1" />
-                        </LinearGradientBrush>
-                      </Path.Stroke>
-                    </Path>
+                          StrokeLineCap="Round" />
                     <Path Data="M 223,113 A 110,110 0 0 1 113,223"
+                          Stroke="{Binding EditorProfileArcTwo}"
                           StrokeThickness="5"
-                          StrokeLineCap="Round">
-                      <Path.Stroke>
-                        <LinearGradientBrush StartPoint="1,0" EndPoint="0,1">
-                          <GradientStop Color="{Binding EditorColorTwoDisplay}" Offset="0" />
-                          <GradientStop Color="{Binding EditorColorThreeDisplay}" Offset="1" />
-                        </LinearGradientBrush>
-                      </Path.Stroke>
-                    </Path>
+                          StrokeLineCap="Round" />
                     <Path Data="M 113,223 A 110,110 0 0 1 3,113"
+                          Stroke="{Binding EditorProfileArcThree}"
                           StrokeThickness="5"
-                          StrokeLineCap="Round">
-                      <Path.Stroke>
-                        <LinearGradientBrush StartPoint="1,1" EndPoint="0,0">
-                          <GradientStop Color="{Binding EditorColorThreeDisplay}" Offset="0" />
-                          <GradientStop Color="{Binding EditorColorFourDisplay}" Offset="1" />
-                        </LinearGradientBrush>
-                      </Path.Stroke>
-                    </Path>
+                          StrokeLineCap="Round" />
                     <Path Data="M 3,113 A 110,110 0 0 1 113,3"
+                          Stroke="{Binding EditorProfileArcFour}"
                           StrokeThickness="5"
-                          StrokeLineCap="Round">
-                      <Path.Stroke>
-                        <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
-                          <GradientStop Color="{Binding EditorColorFourDisplay}" Offset="0" />
-                          <GradientStop Color="{Binding EditorColorDisplay}" Offset="1" />
-                        </LinearGradientBrush>
-                      </Path.Stroke>
-                    </Path>
+                          StrokeLineCap="Round" />
                     <Ellipse Width="202"
                              Height="202"
                              Canvas.Left="12"
                              Canvas.Top="12"
-                             Stroke="{Binding EditorColorDisplay}"
+                             Stroke="{Binding EditorPrimaryColor}"
                              StrokeThickness="1"
                              Opacity="0.25" />
                   </Canvas>
@@ -777,16 +753,9 @@
                            HorizontalAlignment="Right"
                            VerticalAlignment="Top"
                            Margin="0,-5,2,0" />
-                <Border Grid.Row="1" CornerRadius="9">
-                  <Border.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                      <GradientStop Color="{Binding EditorColorDisplay}" Offset="0" />
-                      <GradientStop Color="{Binding EditorColorTwoDisplay}" Offset="0.34" />
-                      <GradientStop Color="{Binding EditorColorThreeDisplay}" Offset="0.67" />
-                      <GradientStop Color="{Binding EditorColorFourDisplay}" Offset="1" />
-                    </LinearGradientBrush>
-                  </Border.Background>
-                </Border>
+                <Border Grid.Row="1"
+                        CornerRadius="9"
+                        Background="{Binding EditorPaletteBrush}" />
               </Grid>
             </Button>
 
@@ -948,16 +917,10 @@
 
             <Border Height="18"
                     CornerRadius="9"
-                    Margin="0,0,0,8">
-              <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                  <GradientStop Color="{Binding EditorColorDisplay}" Offset="0" />
-                  <GradientStop Color="{Binding EditorColorTwoDisplay}" Offset="0.34" />
-                  <GradientStop Color="{Binding EditorColorThreeDisplay}" Offset="0.67" />
-                  <GradientStop Color="{Binding EditorColorFourDisplay}" Offset="1" />
-                </LinearGradientBrush>
-              </Border.Background>
-            </Border>
+                    Margin="0,0,0,8"
+                    Background="{Binding EditorPaletteBrush}"
+                    PointerPressed="ColorRampPointerPressed"
+                    ToolTip.Tip="Select the nearest color stop" />
 
             <Grid Height="166">
               <Grid.ColumnDefinitions>
@@ -1109,16 +1072,9 @@
                                  FontWeight="SemiBold"
                                  TextTrimming="CharacterEllipsis"
                                  VerticalAlignment="Top" />
-                      <Border Grid.Row="1" CornerRadius="5">
-                        <Border.Background>
-                          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                            <GradientStop Color="{Binding ColorOne}" Offset="0" />
-                            <GradientStop Color="{Binding ColorTwo}" Offset="0.34" />
-                            <GradientStop Color="{Binding ColorThree}" Offset="0.67" />
-                            <GradientStop Color="{Binding ColorFour}" Offset="1" />
-                          </LinearGradientBrush>
-                        </Border.Background>
-                      </Border>
+                      <Border Grid.Row="1"
+                              CornerRadius="5"
+                              Background="{Binding Gradient}" />
                     </Grid>
                   </DataTemplate>
                 </ListBox.ItemTemplate>

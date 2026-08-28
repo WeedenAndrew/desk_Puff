@@ -140,6 +140,20 @@ public sealed partial class MainWindow : Window
     private static ScrollViewer? ProfileStripScroll(ListBox strip) =>
         strip.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
 
+    private void ColorRampPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control ramp ||
+            !e.GetCurrentPoint(ramp).Properties.IsLeftButtonPressed ||
+            ramp.Bounds.Width <= 0 ||
+            DataContext is not MainViewModel model)
+        {
+            return;
+        }
+
+        model.SelectColorStopAtFraction(e.GetPosition(ramp).X / ramp.Bounds.Width);
+        e.Handled = true;
+    }
+
     private const uint WmSysCommand = 0x0112;
     private const uint WmNcLeftButtonDoubleClick = 0x00A3;
     private const long ScMaximize = 0xF030;

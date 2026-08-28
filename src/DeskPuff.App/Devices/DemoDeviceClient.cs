@@ -6,9 +6,18 @@ internal sealed class DemoDeviceClient : IDeviceClient, ISessionOverrideClient
 {
     private readonly List<HeatProfile> profiles =
     [
-        new(0, "BLUE", 260, TimeSpan.FromSeconds(40), VaporLevel.Standard, 5, TimeSpan.FromSeconds(10), "#0000FF")
+        new(0, "BLUE", 260, TimeSpan.FromSeconds(40), VaporLevel.Standard, 5, TimeSpan.FromSeconds(10), "#7B07FF")
         {
-            ColorPalette = ["#0000FF", "#2878FF", "#39DCE2"],
+            // A real 25-stop firmware-39 palette keeps demo and headless renders
+            // representative of the gradients the Bluetooth client now reads.
+            ColorPalette =
+            [
+                "#7B07FF", "#6F4FEC", "#5F8AD7", "#4CC1C7", "#2CEDB5",
+                "#07FFAB", "#07F9B6", "#07E9CE", "#07D6E6", "#07C6F8",
+                "#07BFFF", "#72B2F2", "#BC92D3", "#E667AD", "#FA358C",
+                "#FF077D", "#FF0D8B", "#FF14A9", "#FF16CC", "#FF0FEA",
+                "#FF07F7", "#F307F6", "#D707F5", "#B207F6", "#8E07FB",
+            ],
             HasDeviceColor = true,
         },
         new(1, "GREEN", 271, TimeSpan.FromSeconds(45), VaporLevel.High, 5, TimeSpan.FromSeconds(10), "#6EE916")

@@ -99,24 +99,76 @@ internal static class PalettePresentation
         return brush;
     }
 
-    /// <summary>One quadrant of the ring: this colour blending into the next.</summary>
-    public static LinearGradientBrush Pair(
-        string from,
-        string to,
+    /// <summary>One quarter of a closed colourway swept around a segmented ring.</summary>
+    public static LinearGradientBrush RingSegment(
+        IReadOnlyList<string> colors,
+        int segment,
         double startX,
         double startY,
         double endX,
         double endY)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(segment);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(segment, 3);
         LinearGradientBrush brush = new()
         {
             StartPoint = new RelativePoint(startX, startY, RelativeUnit.Relative),
             EndPoint = new RelativePoint(endX, endY, RelativeUnit.Relative),
         };
-        brush.GradientStops.Add(new GradientStop(ToColor(from), 0));
-        brush.GradientStops.Add(new GradientStop(ToColor(to), 1));
+        if (colors.Count == 0)
+        {
+            brush.GradientStops.Add(new GradientStop(Colors.Gray, 0));
+            brush.GradientStops.Add(new GradientStop(Colors.Gray, 1));
+            return brush;
+        }
+
+        if (colors.Count == 1)
+        {
+            Color only = ToColor(colors[0]);
+            brush.GradientStops.Add(new GradientStop(only, 0));
+            brush.GradientStops.Add(new GradientStop(only, 1));
+            return brush;
+        }
+
+        double segmentStart = segment / 4d;
+        double segmentEnd = (segment + 1) / 4d;
+        brush.GradientStops.Add(new GradientStop(ColorOnClosedSweep(colors, segmentStart), 0));
+        for (int index = 1; index < colors.Count; index++)
+        {
+            double position = (double)index / colors.Count;
+            if (position > segmentStart && position < segmentEnd)
+            {
+                brush.GradientStops.Add(new GradientStop(
+                    ToColor(colors[index]),
+                    (position - segmentStart) * 4));
+            }
+        }
+
+        brush.GradientStops.Add(new GradientStop(ColorOnClosedSweep(colors, segmentEnd), 1));
         return brush;
     }
+
+    private static Color ColorOnClosedSweep(IReadOnlyList<string> colors, double position)
+    {
+        if (position >= 1)
+        {
+            return ToColor(colors[0]);
+        }
+
+        double scaled = position * colors.Count;
+        int fromIndex = Math.Min((int)Math.Floor(scaled), colors.Count - 1);
+        int toIndex = (fromIndex + 1) % colors.Count;
+        double amount = scaled - Math.Floor(scaled);
+        Color from = ToColor(colors[fromIndex]);
+        Color to = ToColor(colors[toIndex]);
+        return Color.FromRgb(
+            Interpolate(from.R, to.R, amount),
+            Interpolate(from.G, to.G, amount),
+            Interpolate(from.B, to.B, amount));
+    }
+
+    private static byte Interpolate(byte from, byte to, double amount) =>
+        (byte)Math.Round(from + ((to - from) * amount));
 }
 
 internal sealed record ColorPaletteOption(
@@ -124,23 +176,7 @@ internal sealed record ColorPaletteOption(
     IReadOnlyList<string> Colors,
     string StorageFileName = "")
 {
-    public string ColorOne => ColorAt(0);
-
-    public string ColorTwo => ColorAt(1);
-
-    public string ColorThree => ColorAt(2);
-
-    public string ColorFour => ColorAt(3);
-
-    public bool ColorTwoVisibility => ColorVisibilityAt(1);
-
-    public bool ColorThreeVisibility => ColorVisibilityAt(2);
-
-    public bool ColorFourVisibility => ColorVisibilityAt(3);
-
-    private string ColorAt(int index) => index < Colors.Count ? Colors[index] : Colors[^1];
-
-    private bool ColorVisibilityAt(int index) => index < Colors.Count;
+    public LinearGradientBrush Gradient => PalettePresentation.Sweep(Colors);
 }
 
 internal sealed record DeviceProfileOption(
@@ -227,6 +263,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private const string DefaultAppAccentHex = "#BB376A";
     private const string LegacyDefaultAppAccentHex = "#8CE9D2";
     private const string DefaultAppBackgroundHex = "#0B0C10";
+    // Firmware 39 returned 25 stops from one device profile. Thirty-two keeps
+    // local editing bounded while leaving measured headroom for future ramps.
+    private const int MaximumLocalPaletteColorCount = 32;
 
     private static readonly string[] DefaultProfileColors =
     [
@@ -313,10 +352,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private VaporLevel editorVapor;
     private double editorBoostTemperature = 10;
     private double editorBoostSeconds = 10;
-    private string editorColor = "#0000FF";
-    private string editorColorTwo = string.Empty;
-    private string editorColorThree = string.Empty;
-    private string editorColorFour = string.Empty;
+    private readonly List<string> editorColors = ["#0000FF"];
     private string appAccentHex = DefaultAppAccentHex;
     private string appBackgroundHex = DefaultAppBackgroundHex;
     private string paletteName = string.Empty;
@@ -392,14 +428,16 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             BoostTemperatureAsync,
             () => CanBoost);
         BoostTimeCommand = CreateAsync(BoostTimeAsync, () => CanBoost);
-        SaveProfileCommand = CreateAsync(SaveProfileAsync, () => CanEditDevice && profiles.Count > 0);
+        SaveProfileCommand = CreateAsync(
+            SaveProfileAsync,
+            () => CanEditDevice && profiles.Count > 0 && EditorPaletteCanBeWritten);
         SaveColorPaletteCommand = CreateAsync(SaveColorPaletteAsync, () => IsConnected);
         DeleteColorPaletteCommand = CreateAsync(
             DeleteColorPaletteAsync,
             () => SelectedSavedColorPalette is not null);
         SaveHeatingProfileCommand = CreateAsync(
             SaveHeatingProfileAsync,
-            () => IsConnected && profiles.Count > 0);
+            () => IsConnected && profiles.Count > 0 && EditorPaletteCanBeWritten);
         DeleteHeatingProfileCommand = CreateAsync(
             DeleteHeatingProfileAsync,
             () => SelectedSavedHeatingProfile is not null);
@@ -435,7 +473,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             () => CurrentPage == AppPage.Color && EditorPaletteColors().Length > 1);
         AddColorStopCommand = CreateRelay(
             AddColorStop,
-            () => CurrentPage == AppPage.Color && EditorPaletteColors().Length < 4);
+            () => CurrentPage == AppPage.Color && editorColors.Count < MaximumLocalPaletteColorCount);
         RemoveColorStopCommand = CreateRelay(
             RemoveColorStop,
             () => CurrentPage == AppPage.Color && EditorPaletteColors().Length > 1);
@@ -687,30 +725,6 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get => editorBoostSeconds;
         set => SetProperty(ref editorBoostSeconds, value);
-    }
-
-    public string EditorColor
-    {
-        get => editorColor;
-        set => SetEditorColor(ref editorColor, value, nameof(EditorColor), nameof(EditorColorDisplay));
-    }
-
-    public string EditorColorTwo
-    {
-        get => editorColorTwo;
-        set => SetEditorColor(ref editorColorTwo, value, nameof(EditorColorTwo), nameof(EditorColorTwoDisplay));
-    }
-
-    public string EditorColorThree
-    {
-        get => editorColorThree;
-        set => SetEditorColor(ref editorColorThree, value, nameof(EditorColorThree), nameof(EditorColorThreeDisplay));
-    }
-
-    public string EditorColorFour
-    {
-        get => editorColorFour;
-        set => SetEditorColor(ref editorColorFour, value, nameof(EditorColorFour), nameof(EditorColorFourDisplay));
     }
 
     public string AppAccentHex
@@ -1128,54 +1142,34 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
-    public string EditorColorDisplay => ColorDisplayOrFallback(EditorColor, "#000000");
+    public string EditorPrimaryColor => editorColors[0];
 
-    public string EditorColorTwoDisplay => ColorDisplayOrFallback(EditorColorTwo, EditorColorDisplay);
+    public LinearGradientBrush EditorPaletteBrush => PalettePresentation.Sweep(editorColors);
 
-    public string EditorColorThreeDisplay => ColorDisplayOrFallback(EditorColorThree, EditorColorTwoDisplay);
+    public LinearGradientBrush EditorProfileArcOne => EditorArcBrush(0, 0, 0, 1, 1);
 
-    public string EditorColorFourDisplay => ColorDisplayOrFallback(EditorColorFour, EditorColorThreeDisplay);
+    public LinearGradientBrush EditorProfileArcTwo => EditorArcBrush(1, 1, 0, 0, 1);
+
+    public LinearGradientBrush EditorProfileArcThree => EditorArcBrush(2, 1, 1, 0, 0);
+
+    public LinearGradientBrush EditorProfileArcFour => EditorArcBrush(3, 0, 1, 1, 0);
 
     public string EditorPaletteForegroundDisplay => PalettePresentation.ContrastForeground(EditorPaletteColors());
 
-    public bool EditorColorTwoVisibility => HexColorVisibility(EditorColorTwo);
-
-    public bool EditorColorThreeVisibility => HexColorVisibility(EditorColorThree);
-
-    public bool EditorColorFourVisibility => HexColorVisibility(EditorColorFour);
-
     public string WheelColor
     {
-        get => selectedColorStopIndex switch
-        {
-            1 => EditorColorTwoDisplay,
-            2 => EditorColorThreeDisplay,
-            3 => EditorColorFourDisplay,
-            _ => EditorColorDisplay,
-        };
+        get => editorColors[Math.Clamp(selectedColorStopIndex, 0, editorColors.Count - 1)];
         set
         {
             string normalized = value?.Trim().ToUpperInvariant() ?? string.Empty;
-            if (!IsHexColor(normalized))
+            if (!IsHexColor(normalized) ||
+                string.Equals(WheelColor, normalized, StringComparison.Ordinal))
             {
                 return;
             }
 
-            switch (selectedColorStopIndex)
-            {
-                case 1:
-                    EditorColorTwo = normalized;
-                    break;
-                case 2:
-                    EditorColorThree = normalized;
-                    break;
-                case 3:
-                    EditorColorFour = normalized;
-                    break;
-                default:
-                    EditorColor = normalized;
-                    break;
-            }
+            editorColors[Math.Clamp(selectedColorStopIndex, 0, editorColors.Count - 1)] = normalized;
+            NotifyColorEditorProperties();
         }
     }
 
@@ -1183,7 +1177,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get
         {
-            int count = EditorPaletteColors().Length;
+            int count = editorColors.Count;
             return $"COLOR {Math.Min(selectedColorStopIndex + 1, count)} OF {count}";
         }
     }
@@ -1723,7 +1717,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                     .Select(color => color?.Trim().ToUpperInvariant() ?? string.Empty)
                     .ToArray();
                 if (name.Length is < 1 or > 64 ||
-                    colors.Length is < 1 or > 4 ||
+                    colors.Length is < 1 or > MaximumLocalPaletteColorCount ||
                     colors.Any(color => !IsHexColor(color)))
                 {
                     continue;
@@ -1942,9 +1936,11 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
 
         string[] colors = EditorPaletteColors();
-        if (colors.Length is < 1 or > 4 || colors.Any(color => !IsHexColor(color)))
+        if (colors.Length is < 1 or > MaximumLocalPaletteColorCount ||
+            colors.Any(color => !IsHexColor(color)))
         {
-            throw new InvalidOperationException("A saved palette requires one to four six-digit RGB colors.");
+            throw new InvalidOperationException(
+                $"A saved palette requires one to {MaximumLocalPaletteColorCount} six-digit RGB colors.");
         }
 
         int existingIndex = SavedColorPalettes
@@ -1984,7 +1980,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         ColorPaletteOption palette = SelectedSavedColorPalette ??
             throw new InvalidOperationException("Select a saved palette first.");
         SetEditorPalette(palette.Colors);
-        StatusText = $"Loaded {palette.Name} • save the profile to send it to the device";
+        StatusText = palette.Colors.Count <= 4
+            ? $"Loaded {palette.Name} • ready to pair with a heating profile"
+            : $"Loaded {palette.Name} • {palette.Colors.Count}-stop palettes are local and display-only";
     }
 
     private async Task DeleteColorPaletteAsync(CancellationToken cancellationToken)
@@ -2542,21 +2540,31 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         double startY,
         double endX,
         double endY) =>
-        PalettePresentation.Pair(
-            ProfileColorAt(quadrant),
-            ProfileColorAt((quadrant + 1) % 4),
+        PalettePresentation.RingSegment(
+            ActiveProfilePalette(),
+            quadrant,
             startX,
             startY,
             endX,
             endY);
 
-    private string[] EditorPaletteColors() =>
-    [
-        EditorColor.Trim().ToUpperInvariant(),
-        .. new[] { EditorColorTwo, EditorColorThree, EditorColorFour }
-            .Where(color => !string.IsNullOrWhiteSpace(color))
-            .Select(color => color.Trim().ToUpperInvariant()),
-    ];
+    private LinearGradientBrush EditorArcBrush(
+        int quadrant,
+        double startX,
+        double startY,
+        double endX,
+        double endY) =>
+        PalettePresentation.RingSegment(
+            editorColors,
+            quadrant,
+            startX,
+            startY,
+            endX,
+            endY);
+
+    private string[] EditorPaletteColors() => [.. editorColors];
+
+    private bool EditorPaletteCanBeWritten => editorColors.Count is >= 1 and <= 4;
 
     private HeatProfile BuildEditorProfile()
     {
@@ -2603,25 +2611,49 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void SetEditorPalette(IReadOnlyList<string> colors)
     {
-        EditorColor = colors.ElementAtOrDefault(0) ?? string.Empty;
-        EditorColorTwo = colors.ElementAtOrDefault(1) ?? string.Empty;
-        EditorColorThree = colors.ElementAtOrDefault(2) ?? string.Empty;
-        EditorColorFour = colors.ElementAtOrDefault(3) ?? string.Empty;
-        selectedColorStopIndex = Math.Clamp(selectedColorStopIndex, 0, Math.Max(0, colors.Count - 1));
+        string[] normalized = colors
+            .Select(color => color?.Trim().ToUpperInvariant() ?? string.Empty)
+            .ToArray();
+        if (normalized.Length is < 1 or > MaximumLocalPaletteColorCount ||
+            normalized.Any(color => !IsHexColor(color)))
+        {
+            throw new InvalidOperationException(
+                $"A local colorway requires one to {MaximumLocalPaletteColorCount} six-digit RGB colors.");
+        }
+
+        editorColors.Clear();
+        editorColors.AddRange(normalized);
+        selectedColorStopIndex = Math.Clamp(selectedColorStopIndex, 0, editorColors.Count - 1);
         NotifyColorEditorProperties();
     }
 
     private void SelectRelativeColorStop(int offset)
     {
-        int count = EditorPaletteColors().Length;
+        int count = editorColors.Count;
         selectedColorStopIndex = (selectedColorStopIndex + offset + count) % count;
         NotifyColorEditorProperties();
+    }
+
+    internal void SelectColorStopAtFraction(double horizontalPosition)
+    {
+        if (!double.IsFinite(horizontalPosition))
+        {
+            return;
+        }
+
+        double scaled = Math.Clamp(horizontalPosition, 0, 1) * (editorColors.Count - 1);
+        int selectedIndex = (int)Math.Round(scaled, MidpointRounding.AwayFromZero);
+        if (selectedColorStopIndex != selectedIndex)
+        {
+            selectedColorStopIndex = selectedIndex;
+            NotifyColorEditorProperties();
+        }
     }
 
     private void AddColorStop()
     {
         List<string> colors = [.. EditorPaletteColors()];
-        if (colors.Count >= 4)
+        if (colors.Count >= MaximumLocalPaletteColorCount)
         {
             return;
         }
@@ -2648,47 +2680,18 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void NotifyColorEditorProperties()
     {
+        OnPropertyChanged(nameof(EditorPrimaryColor));
+        OnPropertyChanged(nameof(EditorPaletteBrush));
+        OnPropertyChanged(nameof(EditorProfileArcOne));
+        OnPropertyChanged(nameof(EditorProfileArcTwo));
+        OnPropertyChanged(nameof(EditorProfileArcThree));
+        OnPropertyChanged(nameof(EditorProfileArcFour));
         OnPropertyChanged(nameof(WheelColor));
         OnPropertyChanged(nameof(ColorStopPositionText));
         OnPropertyChanged(nameof(CurrentColorProfileName));
         OnPropertyChanged(nameof(EditorPaletteForegroundDisplay));
         NotifyCommandStates();
     }
-
-    private void SetEditorColor(
-        ref string storage,
-        string value,
-        string propertyName,
-        string displayPropertyName)
-    {
-        if (SetProperty(ref storage, value ?? string.Empty, propertyName))
-        {
-            // Every display property falls back to the one before it, so a
-            // change to any stop can change all four. Notifying only the stop
-            // that moved left the rest painting a stale colour: with a
-            // one-colour palette, stops two through four all fall back to the
-            // first, so the colorway bar kept three quarters of its old value
-            // and looked like it had not updated at all.
-            OnPropertyChanged(displayPropertyName);
-            OnPropertyChanged(nameof(EditorColorDisplay));
-            OnPropertyChanged(nameof(EditorColorTwoDisplay));
-            OnPropertyChanged(nameof(EditorColorThreeDisplay));
-            OnPropertyChanged(nameof(EditorColorFourDisplay));
-            OnPropertyChanged(nameof(EditorColorTwoVisibility));
-            OnPropertyChanged(nameof(EditorColorThreeVisibility));
-            OnPropertyChanged(nameof(EditorColorFourVisibility));
-            OnPropertyChanged(nameof(WheelColor));
-            OnPropertyChanged(nameof(ColorStopPositionText));
-            OnPropertyChanged(nameof(CurrentColorProfileName));
-            OnPropertyChanged(nameof(EditorPaletteForegroundDisplay));
-            NotifyCommandStates();
-        }
-    }
-
-    private static string ColorDisplayOrFallback(string color, string fallback) =>
-        IsHexColor(color) ? color : fallback;
-
-    private static bool HexColorVisibility(string color) => IsHexColor(color);
 
     private static void ApplyAppAccent(string colorHex)
     {

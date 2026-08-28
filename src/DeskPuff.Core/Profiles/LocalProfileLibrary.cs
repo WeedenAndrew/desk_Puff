@@ -45,6 +45,9 @@ public sealed class LocalProfileLibrary(string rootPath)
 {
     private const int MaximumDocumentBytes = 16 * 1024;
     private const int MaximumNameLength = 64;
+    // Firmware 39 returned 25 colors from one profile. Thirty-two keeps local
+    // palette files bounded while leaving headroom above the measured device.
+    private const int MaximumLocalColorCount = 32;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         Converters = { new JsonStringEnumConverter() },
@@ -285,7 +288,7 @@ public sealed class LocalProfileLibrary(string rootPath)
     private static bool IsValid(LocalColorProfile profile) =>
         profile.SchemaVersion == 1 &&
         IsName(profile.Name) &&
-        IsColors(profile.Colors);
+        IsColors(profile.Colors, MaximumLocalColorCount);
 
     private static bool IsValid(LocalHeatingProfile profile) =>
         profile.SchemaVersion == 1 &&
@@ -302,15 +305,15 @@ public sealed class LocalProfileLibrary(string rootPath)
         profile.BoostTemperatureCelsius is >= 0 and <= 30 &&
         double.IsFinite(profile.BoostDurationSeconds) &&
         profile.BoostDurationSeconds is >= 0 and <= 120 &&
-        IsColors(profile.Colors);
+        IsColors(profile.Colors, maximumCount: 4);
 
     private static bool IsName(string name) =>
         !string.IsNullOrWhiteSpace(name) &&
         name.Trim().Length <= MaximumNameLength &&
         !name.Any(char.IsControl);
 
-    private static bool IsColors(string[] colors) =>
-        colors is { Length: >= 1 and <= 4 } && colors.All(IsColor);
+    private static bool IsColors(string[] colors, int maximumCount) =>
+        colors is { Length: >= 1 } && colors.Length <= maximumCount && colors.All(IsColor);
 
     private static bool IsColor(string color) =>
         color is { Length: 7 } &&

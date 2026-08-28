@@ -6,7 +6,9 @@ namespace DeskPuff.Bluetooth.Windows.Protocol;
 
 internal static class ProfileLightingCodec
 {
-    private const int MaximumColorCount = 16;
+    // A PEAKSHI V2 on firmware 39 returned 25 colors on 2026-08-28. Thirty-two
+    // keeps the decoder bounded while leaving headroom above the observed maximum.
+    private const int MaximumColorCount = 32;
     private const int MaximumCborBytes = 512;
 
     internal static byte[] EncodeSolid(IReadOnlyList<string> colors)
@@ -58,9 +60,19 @@ internal static class ProfileLightingCodec
             !rootMap.TryGetValue("lamp", out object? lampValue) ||
             lampValue is not Dictionary<string, object?> lamp ||
             !lamp.TryGetValue("param", out object? parameterValue) ||
-            parameterValue is not Dictionary<string, object?> parameters ||
-            !parameters.TryGetValue("color", out object? colorValue) ||
-            colorValue is not byte[] rgb ||
+            parameterValue is not Dictionary<string, object?> parameters)
+        {
+            throw new InvalidDataException("Profile lighting CBOR does not contain a bounded RGB color array.");
+        }
+
+        if (!parameters.TryGetValue("color", out object? colorValue))
+        {
+            return parameters.ContainsKey("paths")
+                ? []
+                : throw new InvalidDataException("Profile lighting CBOR does not contain a bounded RGB color array.");
+        }
+
+        if (colorValue is not byte[] rgb ||
             rgb.Length is < 3 ||
             rgb.Length % 3 != 0 ||
             rgb.Length / 3 > MaximumColorCount)

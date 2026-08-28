@@ -332,8 +332,12 @@ try {
         Read-Path "/u/app/hc/$i/time"   4 "    duration"
         Read-Path "/u/app/hc/$i/btmp"   4 "    boost temp"
         Read-Path "/u/app/hc/$i/btim"   4 "    boost time"
-        Read-RawPath "/u/app/hc/$i/colr" 128 "    colorway /u"
-        Read-RawPath "/p/app/hc/$i/colr" 128 "    colorway /p"
+        # 125, not 128. Opcode 0x02 reports this device's maximum single read as
+        # 125 bytes (7D 00), and 128 is the only size in this whole survey that
+        # exceeds it — which is also the only read that fails with status 0x7A.
+        # The path was never wrong; the request was three bytes too large.
+        Read-RawPath "/u/app/hc/$i/colr" 125 "    colorway /u"
+        Read-RawPath "/p/app/hc/$i/colr" 125 "    colorway /p"
     }
 
     Write-Survey ""

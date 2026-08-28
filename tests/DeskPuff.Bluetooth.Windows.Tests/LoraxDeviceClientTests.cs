@@ -10,8 +10,14 @@ namespace DeskPuff.Bluetooth.Windows.Tests;
 [TestClass]
 public sealed class LoraxDeviceClientTests
 {
-    private static readonly string[] FirstDevicePalette = ["#102030", "#FFFFFF"];
+    private const string FirstDeviceColorBytes =
+        "7B07FF6F4FEC5F8AD74CC1C72CEDB507FFAB07F9B607E9CE07D6E607C6F807BFFF72B2F2BC92D3E667ADFA358CFF077DFF0D8BFF14A9FF16CCFF0FEAFF07F7F307F6D707F5B207F68E07FB";
+    private static readonly string[] FirstDevicePalette = DecodeExpectedColors(FirstDeviceColorBytes);
+    private static readonly byte[] FirstDeviceLighting = BuildCompletePikaledFixture(FirstDeviceColorBytes);
+    private static readonly string[] FourthProfileFallback = ["#FFFFFF"];
     private static readonly string[] ProfilePrimaryColors = ["#102030", "#202030", "#302030", "#402030"];
+    private static readonly byte[] MigrationPathLighting = Convert.FromHexString(
+        "A1646C616D70A2646E616D65676D696772746E3165706172616DA165706174687380");
 
     [TestMethod]
     public async Task Connect_AuthenticatesAndKeepsUnknownFirmwareReadOnly()
@@ -126,10 +132,27 @@ public sealed class LoraxDeviceClientTests
 
         Assert.HasCount(4, profiles);
         Assert.IsTrue(profiles.All(profile => profile.HasDeviceColor));
+        Assert.HasCount(25, profiles[0].ColorPalette);
         CollectionAssert.AreEqual(
             FirstDevicePalette,
             profiles[0].ColorPalette.ToArray());
         Assert.IsTrue(transport.ReadPaths.Contains(LoraxPaths.ProfileColor(0), StringComparer.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Profiles_PathAnimationWithoutColorUsesNormalFallback()
+    {
+        FakeLoraxTransport transport = new() { FourthProfileLighting = MigrationPathLighting };
+        await using LoraxDeviceClient client = new(transport);
+        await client.ConnectAsync(
+            new DeviceCandidate("test-peak", "PUFFCO PEAK", -40),
+            CancellationToken.None);
+
+        IReadOnlyList<HeatProfile> profiles = await client.GetProfilesAsync(CancellationToken.None);
+
+        Assert.IsFalse(profiles[3].HasDeviceColor);
+        CollectionAssert.AreEqual(FourthProfileFallback, profiles[3].ColorPalette.ToArray());
+        Assert.AreEqual(0, transport.WriteCount);
     }
 
     private sealed class FakeLoraxTransport : ILoraxTransport
@@ -145,6 +168,8 @@ public sealed class LoraxDeviceClientTests
         public uint ModelCode { get; init; }
 
         public string DeviceName { get; init; } = "TEST PEAK";
+
+        public byte[]? FourthProfileLighting { get; init; }
 
         public bool UnlockKeyMatched { get; private set; }
 
@@ -240,7 +265,7 @@ public sealed class LoraxDeviceClientTests
             };
         }
 
-        private static byte[]? ReadProfileValue(string path)
+        private byte[]? ReadProfileValue(string path)
         {
             string[] segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (segments is not ["u", "app", "hc", _, _] ||
@@ -257,6 +282,8 @@ public sealed class LoraxDeviceClientTests
                 "time" => Single(40 + index),
                 "btmp" => Single(5),
                 "btim" => Single(10),
+                "colr" when index == 0 => FirstDeviceLighting,
+                "colr" when index == 3 && FourthProfileLighting is not null => FourthProfileLighting,
                 "colr" => ProfileLightingCodec.EncodeSolid(
                     [ProfilePrimaryColors[index], "#FFFFFF"]),
                 _ => null,
@@ -285,5 +312,21 @@ public sealed class LoraxDeviceClientTests
             BinaryPrimitives.WriteSingleLittleEndian(bytes, value);
             return bytes;
         }
+    }
+
+    private static byte[] BuildCompletePikaledFixture(string colorBytesHex)
+    {
+        byte[] header = Convert.FromHexString(
+            "A1646C616D70A2646E616D656870696B616C65643265706172616DA165636F6C6F7258");
+        byte[] colorBytes = Convert.FromHexString(colorBytesHex);
+        return [.. header, checked((byte)colorBytes.Length), .. colorBytes];
+    }
+
+    private static string[] DecodeExpectedColors(string colorBytesHex)
+    {
+        byte[] bytes = Convert.FromHexString(colorBytesHex);
+        return Enumerable.Range(0, bytes.Length / 3)
+            .Select(index => $"#{bytes[index * 3]:X2}{bytes[(index * 3) + 1]:X2}{bytes[(index * 3) + 2]:X2}")
+            .ToArray();
     }
 }

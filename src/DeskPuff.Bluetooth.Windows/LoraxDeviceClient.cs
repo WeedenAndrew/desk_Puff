@@ -117,10 +117,11 @@ public sealed class LoraxDeviceClient : IDeviceClient
                     LoraxPaths.ProfileColor(index),
                     maximumLength: 512,
                     cancellationToken).ConfigureAwait(false);
-                colorPalette = ProfileLightingCodec.DecodeColors(lighting.Span)
-                    .Take(4)
-                    .ToArray();
-                hasDeviceColor = true;
+                IReadOnlyList<string> decodedPalette = ProfileLightingCodec.DecodeColors(lighting.Span);
+                hasDeviceColor = decodedPalette.Count > 0;
+                colorPalette = hasDeviceColor
+                    ? decodedPalette.ToArray()
+                    : [defaultColors[index]];
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidDataException)
             {

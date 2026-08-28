@@ -6,8 +6,11 @@ namespace DeskPuff.Core.Tests;
 [TestClass]
 public sealed class LocalProfileLibraryTests
 {
-    private static readonly string[] AuroraColors = ["#581CFF", "#20DCE5", "#6BFF8F"];
+    private static readonly string[] AuroraColors = ["#581CFF", "#20DCE5", "#6BFF8F", "#FF2299"];
     private static readonly string[] OceanColors = ["#2878FF", "#39DCE2"];
+    private static readonly string[] TwentyFiveColors = Enumerable.Range(0, 25)
+        .Select(index => $"#{index:X6}")
+        .ToArray();
 
     private string rootPath = string.Empty;
     private LocalProfileLibrary library = null!;
@@ -48,6 +51,35 @@ public sealed class LocalProfileLibraryTests
 
         Assert.HasCount(20, profiles);
         Assert.IsTrue(Directory.Exists(Path.Combine(rootPath, "colors")));
+    }
+
+    [TestMethod]
+    public async Task ColorProfile_TwentyFiveStopsRoundTripUnchanged()
+    {
+        await library.SaveColorAsync(
+            new LocalColorProfile { Name = "Device ramp", Colors = TwentyFiveColors },
+            existingFileName: null,
+            CancellationToken.None);
+
+        IReadOnlyList<StoredLocalProfile<LocalColorProfile>> loaded =
+            await library.LoadColorsAsync(CancellationToken.None);
+
+        Assert.HasCount(1, loaded);
+        CollectionAssert.AreEqual(TwentyFiveColors, loaded[0].Profile.Colors);
+    }
+
+    [TestMethod]
+    public async Task HeatingProfile_FiveColorsRemainsRejectedByWriteShapedValidation()
+    {
+        LocalHeatingProfile profile = SafeHeatingProfile() with
+        {
+            Colors = ["#000000", "#111111", "#222222", "#333333", "#444444"],
+        };
+
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => library.SaveHeatingAsync(
+            profile,
+            existingFileName: null,
+            CancellationToken.None));
     }
 
     [TestMethod]
@@ -109,7 +141,7 @@ public sealed class LocalProfileLibraryTests
             {
               "schemaVersion": 1,
               "name": "Aurora",
-              "colors": ["#581CFF", "#20DCE5", "#6BFF8F"]
+              "colors": ["#581CFF", "#20DCE5", "#6BFF8F", "#FF2299"]
             }
             """);
 
