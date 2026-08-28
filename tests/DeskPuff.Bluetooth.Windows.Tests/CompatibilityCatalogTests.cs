@@ -34,10 +34,21 @@ public sealed class CompatibilityCatalogTests
     }
 
     [TestMethod]
-    public void HardwareVerifiedAllowlist_StartsEmpty()
+    public void HardwareVerifiedAllowlist_RejectsDifferentFirmware()
     {
         DeviceIdentity identity = new(DeviceFamily.PeakPro, "Test", 13, "AG", null);
 
         Assert.IsFalse(CompatibilityCatalog.IsHardwareVerified(identity));
+    }
+
+    [TestMethod]
+    public void HardwareVerifiedAllowlist_MatchesOnlyPeakProModel13FirmwareAn()
+    {
+        DeviceIdentity verified = new(DeviceFamily.PeakPro, "PEAKSHI V2", 13, "AN", null);
+
+        Assert.IsTrue(CompatibilityCatalog.IsHardwareVerified(verified));
+        Assert.IsFalse(CompatibilityCatalog.IsHardwareVerified(verified with { ModelCode = 12 }));
+        Assert.IsFalse(CompatibilityCatalog.IsHardwareVerified(verified with { FirmwareVersion = "AO" }));
+        Assert.IsFalse(CompatibilityCatalog.IsHardwareVerified(verified with { Family = DeviceFamily.NewProxy }));
     }
 }

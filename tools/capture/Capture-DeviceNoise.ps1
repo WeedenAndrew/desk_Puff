@@ -160,10 +160,11 @@ function Invoke-Lorax([byte]$opcode, [byte[]]$body, [string]$label, [string]$tar
     return $parsed
 }
 
-function New-ReadBody([string]$path, [int]$size) {
+function New-ReadBody([string]$path, [int]$size, [int]$offset = 0) {
     $pathBytes = [System.Text.Encoding]::UTF8.GetBytes($path)
     $body = New-Object byte[] (4 + $pathBytes.Length)
-    $body[0] = 0; $body[1] = 0                                  # offset 0
+    $body[0] = [byte]($offset -band 0xFF)
+    $body[1] = [byte](($offset -shr 8) -band 0xFF)
     $body[2] = [byte]($size -band 0xFF)
     $body[3] = [byte](($size -shr 8) -band 0xFF)
     [Array]::Copy($pathBytes, 0, $body, 4, $pathBytes.Length)
@@ -217,8 +218,8 @@ function Invoke-RawProbe([byte]$opcode, [byte[]]$body, [string]$label, [string]$
         (Format-Hex $payload), (Format-Ascii $payload))
 }
 
-function Read-RawPath([string]$path, [int]$size, [string]$label) {
-    Invoke-RawProbe 0x10 (New-ReadBody $path $size) $label $path
+function Read-RawPath([string]$path, [int]$size, [string]$label, [int]$offset = 0) {
+    Invoke-RawProbe 0x10 (New-ReadBody $path $size $offset) $label $path
 }
 
 function Write-StatusSummary {
@@ -339,6 +340,17 @@ try {
         Read-RawPath "/u/app/hc/$i/colr" 125 "    colorway /u"
         Read-RawPath "/p/app/hc/$i/colr" 125 "    colorway /p"
     }
+
+    # The colorway value is longer than one 125-byte read, so the application's
+    # ReadAllAsync fetches it in chunks at increasing offsets and joins them.
+    # Every capture so far has read offset 0 only, which means the second chunk
+    # has never been observed even though the app depends on it. If the assembled
+    # CBOR is incomplete or malformed, this is where it happens.
+    Write-Survey ""
+    Write-Survey "-- colorway continuation, slot 0 (offsets the app actually uses) --"
+    Read-RawPath "/u/app/hc/0/colr" 125 "  offset 125" 125
+    Read-RawPath "/u/app/hc/0/colr" 125 "  offset 250" 250
+    Read-RawPath "/u/app/hc/0/colr" 125 "  offset 375" 375
 
     Write-Survey ""
     Write-Survey "-- overrides and modes (read, never written) --"

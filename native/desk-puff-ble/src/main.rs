@@ -384,11 +384,9 @@ fn validate_frame(frame: &[u8], expected_sequence: u16) -> Result<(), io::Error>
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "Lorax frame sequence is invalid."));
     }
     match frame[2] {
-        0x00..=0x02 | 0x10 => Ok(()),
-        0x11 => Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "Real-device writes are disabled until hardware validation is complete.",
-        )),
+        // Per-device write authorization now lives in CompatibilityCatalog; accepting
+        // 0x11 here only lets an already-authorized managed request reach Bluetooth.
+        0x00..=0x02 | 0x10 | 0x11 => Ok(()),
         _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "Lorax opcode is not allowlisted.")),
     }
 }
@@ -510,19 +508,15 @@ mod tests {
     }
 
     #[test]
-    fn frame_validation_allows_reads_and_rejects_writes() {
+    fn frame_validation_allows_protocol_reads_and_writes() {
         assert!(validate_frame(&[7, 0, 0x10], 7).is_ok());
-        assert_eq!(
-            validate_frame(&[7, 0, 0x11, 0], 7)
-                .expect_err("writes must stay disabled")
-                .kind(),
-            io::ErrorKind::PermissionDenied
-        );
+        assert!(validate_frame(&[7, 0, 0x11, 0], 7).is_ok());
     }
 
     #[test]
     fn frame_validation_rejects_sequence_and_opcode_mismatches() {
         assert!(validate_frame(&[1, 0, 0x10], 2).is_err());
+        assert!(validate_frame(&[2, 0, 0x12], 2).is_err());
         assert!(validate_frame(&[2, 0, 0xff], 2).is_err());
         assert!(validate_frame(&[2, 0], 2).is_err());
     }

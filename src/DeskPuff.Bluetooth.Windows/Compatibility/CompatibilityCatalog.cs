@@ -20,9 +20,22 @@ internal static class CompatibilityCatalog
             [uint.MaxValue] = "Peak Pro",
         };
 
-    // Intentionally empty until each firmware has completed docs/SAFETY.md.
+    // A firmware appears here only after completing docs/SAFETY.md, and every
+    // entry has to name the evidence that admitted it.
+    //
+    // Peak Pro model 13, firmware AN, is the sole entry. Admitted 2026-08-28 on
+    // the strength of a repeatable read-only session against a PEAKSHI V2 on
+    // 2026-08-27/28: scan, bond, authenticate, every device and profile read,
+    // live state tracking and clean disconnect, all correct and repeatable.
+    //
+    // "AN" is not a typo for 39. LoraxValueCodec.RevisionNumberToString encodes
+    // the firmware byte as an Excel-style column, so 39 becomes "AN". An entry
+    // keyed on "39" would silently never match.
     private static readonly HashSet<(DeviceFamily Family, uint Model, string Firmware)>
-        HardwareVerifiedFirmware = [];
+        HardwareVerifiedFirmware =
+        [
+            (DeviceFamily.PeakPro, 13u, "AN"),
+        ];
 
     internal static DeviceIdentity Identify(
         string advertisedName,
