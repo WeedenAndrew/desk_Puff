@@ -337,15 +337,18 @@ public sealed class LoraxDeviceClient : IDeviceClient
                 LoraxPaths.BatteryChargeState,
                 1,
                 cancellationToken).ConfigureAwait(false)).Span[0];
-            // Confirmed on a PEAKSHI V2, firmware 39, 2026-08-27: /p/bat/chg/stat
-            // reads 4 while off the charger, and this expression correctly
-            // reports false for it.
+            // Both sides confirmed on a PEAKSHI V2, firmware 39, 2026-08-27, by
+            // capturing /p/bat/chg/stat in each state:
             //
-            // What 0 and 1 mean is still assumed rather than observed. No value
-            // has ever been read from a charging device, so the positive case
-            // is unverified and a wrong guess here shows a charging icon that
-            // never appears. Capture /p/bat/chg/stat on the charger and either
-            // confirm this line or replace it with the real value.
+            //     off the charger   4
+            //     on the charger    0
+            //
+            // So 0 means charging and this expression is right. It was a guess
+            // when written and it happened to be correct.
+            //
+            // 1 remains unobserved. It is kept because a two-value "charging"
+            // range is the likelier design, but nothing has ever read it. If a
+            // device is ever seen reporting 1, record what it was doing.
             isCharging = chargeState is 0 or 1;
             lastBatteryRead = DateTimeOffset.UtcNow;
         }
