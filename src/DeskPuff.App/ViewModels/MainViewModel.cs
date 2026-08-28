@@ -248,6 +248,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private const double MaximumQuickHitTemperatureCelsius =
         MaximumQuickHitTemperatureFahrenheit / 1.8;
     private const double MaximumQuickHitTimeSeconds = 15;
+    // Three failed 500 ms polls tolerate up to a one-second radio hiccup but
+    // disconnect at roughly 1.5 seconds, before the UI can sit stale for long.
+    private const int MaximumConsecutiveRefreshFailures = 3;
 
     private static readonly DeviceLimits PreferenceFallbackLimits = new(
         190,
@@ -945,7 +948,19 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         _ => "UNKNOWN CHAMBER",
     };
 
-    public string BatteryText => $"{Math.Round(snapshot.BatteryPercent):0}%";
+    /// <summary>
+    /// The battery readout, which says CHARGING instead of a percentage while
+    /// the device is on the charger.
+    /// </summary>
+    /// <remarks>
+    /// A percentage that is climbing on its own reads as a fault rather than as
+    /// charging, so the state replaces the number rather than sitting beside it.
+    /// The four level blocks keep tracking the real percentage, so the charge
+    /// level stays visible without the digits implying a steady reading.
+    /// </remarks>
+    public string BatteryText => snapshot.IsCharging
+        ? "CHARGING"
+        : $"{Math.Round(snapshot.BatteryPercent):0}%";
 
     public double BatteryBlockOneOpacity => BatteryBlockOpacity(1);
 
@@ -1398,10 +1413,24 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         StartPolling();
     }
 
-    private async Task DisconnectAsync(CancellationToken cancellationToken)
+    private Task DisconnectAsync(CancellationToken cancellationToken) =>
+        DisconnectAsync(
+            stopPolling: true,
+            disconnectStatus: "Disconnected safely",
+            cancellationToken: cancellationToken);
+
+    private async Task DisconnectAsync(
+        bool stopPolling,
+        string disconnectStatus,
+        CancellationToken cancellationToken)
     {
-        await StopPollingAsync();
+        if (stopPolling)
+        {
+            await StopPollingAsync();
+        }
+
         await controller.DisconnectAsync(cancellationToken);
+        ApplySnapshot(controller.Snapshot);
         SetDeviceProfiles([]);
         connectedCandidate = null;
         HotSwapCandidates.Clear();
@@ -1409,7 +1438,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         Candidates.Clear();
         SelectedCandidate = null;
         CurrentPage = AppPage.Home;
-        StatusText = "Disconnected safely";
+        StatusText = disconnectStatus;
     }
 
     private async Task StartStopAsync(CancellationToken cancellationToken)
@@ -2206,11 +2235,12 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void StartPolling()
     {
-        if (pollingTask is not null)
+        if (pollingTask is { IsCompleted: false })
         {
             return;
         }
 
+        pollingCancellation?.Dispose();
         pollingCancellation = new CancellationTokenSource();
         pollingTask = PollAsync(pollingCancellation.Token);
     }
@@ -2238,20 +2268,31 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task PollAsync(CancellationToken cancellationToken)
     {
+        int consecutiveFailures = 0;
         using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(500));
         while (await timer.WaitForNextTickAsync(cancellationToken))
         {
             try
             {
                 await controller.RefreshAsync(cancellationToken);
+                consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 return;
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                RunOnUiThread(() => ShowError(exception));
+                consecutiveFailures++;
+                if (consecutiveFailures < MaximumConsecutiveRefreshFailures)
+                {
+                    continue;
+                }
+
+                await DisconnectAsync(
+                    stopPolling: false,
+                    disconnectStatus: "Device disconnected after repeated communication failures",
+                    cancellationToken: CancellationToken.None);
                 return;
             }
         }

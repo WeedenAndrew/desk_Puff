@@ -9,6 +9,9 @@ namespace DeskPuff.App.Tests;
 internal sealed class FakeDeviceClient : IDeviceClient
 {
     private IReadOnlyList<HeatProfile> profiles = DefaultProfiles();
+    private readonly Queue<bool> refreshFailures = new();
+    private int disconnectCallCount;
+    private int refreshCallCount;
 
     public DeviceSnapshot Snapshot { get; private set; } = CreateSafeSnapshot();
 
@@ -24,6 +27,10 @@ internal sealed class FakeDeviceClient : IDeviceClient
 
     public int BoostCallCount { get; private set; }
 
+    public int DisconnectCallCount => Volatile.Read(ref disconnectCallCount);
+
+    public int RefreshCallCount => Volatile.Read(ref refreshCallCount);
+
     public double LastBoostTemperatureCelsius { get; private set; }
 
     public TimeSpan LastBoostDuration { get; private set; }
@@ -36,6 +43,17 @@ internal sealed class FakeDeviceClient : IDeviceClient
         BoostCallCount;
 
     public void SetProfiles(IReadOnlyList<HeatProfile> updatedProfiles) => profiles = updatedProfiles;
+
+    public void QueueRefreshFailures(params bool[] failures)
+    {
+        lock (refreshFailures)
+        {
+            foreach (bool failure in failures)
+            {
+                refreshFailures.Enqueue(failure);
+            }
+        }
+    }
 
     /// <summary>Reports a chamber change, the way telemetry would.</summary>
     public void SetChamber(ChamberKind chamber)
@@ -67,12 +85,27 @@ internal sealed class FakeDeviceClient : IDeviceClient
 
     public Task DisconnectAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref disconnectCallCount);
         Snapshot = DeviceSnapshot.Disconnected;
+        SnapshotChanged?.Invoke(this, Snapshot);
         return Task.CompletedTask;
     }
 
-    public Task<DeviceSnapshot> RefreshAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(Snapshot);
+    public Task<DeviceSnapshot> RefreshAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref refreshCallCount);
+        bool shouldFail;
+        lock (refreshFailures)
+        {
+            shouldFail = refreshFailures.Count > 0 && refreshFailures.Dequeue();
+        }
+
+        return shouldFail
+            ? Task.FromException<DeviceSnapshot>(new InvalidOperationException("Scripted transient refresh failure."))
+            : Task.FromResult(Snapshot);
+    }
 
     public Task<IReadOnlyList<HeatProfile>> GetProfilesAsync(CancellationToken cancellationToken) =>
         Task.FromResult(profiles);
