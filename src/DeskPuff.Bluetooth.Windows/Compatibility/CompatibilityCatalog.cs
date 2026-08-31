@@ -37,6 +37,29 @@ internal static class CompatibilityCatalog
             (DeviceFamily.PeakPro, 13u, "AN"),
         ];
 
+    // These limits were stated by the device's owner from the Puffco app interface
+    // on 2026-08-31. They are NOT read from the device. Lorax GetLimits (0x02)
+    // returned 125, 40, and 8 as u16 values, which do not describe these thermal
+    // limits, so their wire location remains unknown. The +15 F boost value is a
+    // temperature delta, not an absolute temperature ceiling.
+    //
+    // Device reads corroborate the owner-stated envelope without establishing it:
+    // profile temperatures were 450, 420, 500, and 480 F; durations were 90 and
+    // 120 seconds; temperature boost was +5 F; and time boost was 10 seconds.
+    private static readonly Dictionary<
+        (DeviceFamily Family, uint Model, string Firmware),
+        DeviceLimits> HardwareVerifiedLimits =
+        new Dictionary<(DeviceFamily Family, uint Model, string Firmware), DeviceLimits>
+        {
+            [(DeviceFamily.PeakPro, 13u, "AN")] = new(
+                MinimumTemperatureCelsius: (400 - 32) * 5.0 / 9.0,
+                MaximumTemperatureCelsius: (600 - 32) * 5.0 / 9.0,
+                MinimumDuration: TimeSpan.FromSeconds(30),
+                MaximumDuration: TimeSpan.FromMinutes(2),
+                MaximumBoostTemperatureCelsius: 15 * 5.0 / 9.0,
+                MaximumBoostDuration: TimeSpan.FromSeconds(30)),
+        };
+
     internal static DeviceIdentity Identify(
         string advertisedName,
         string deviceName,
@@ -77,4 +100,11 @@ internal static class CompatibilityCatalog
             DeviceFamily.NewProxy => new(true, false, true, true, 4),
             _ => new(false, false, false, false, 0),
         };
+
+    internal static DeviceLimits? LimitsFor(DeviceIdentity identity) =>
+        HardwareVerifiedLimits.TryGetValue(
+            (identity.Family, identity.ModelCode, identity.FirmwareVersion),
+            out DeviceLimits? limits)
+                ? limits
+                : null;
 }

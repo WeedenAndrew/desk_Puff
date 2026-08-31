@@ -207,6 +207,11 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
             throw new InvalidDataException("The Bluetooth helper returned a mismatched Lorax sequence.");
         }
 
+        if (opcode == LoraxOpcode.WriteShort && reply.Status != 0)
+        {
+            throw new IOException($"The device rejected the Lorax write with status 0x{reply.Status:X2}.");
+        }
+
         if (reply.Payload.Length > maximumReplyLength)
         {
             throw new InvalidDataException("Lorax reply exceeded its expected maximum size.");

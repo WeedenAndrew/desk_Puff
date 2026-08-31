@@ -51,4 +51,31 @@ public sealed class CompatibilityCatalogTests
         Assert.IsFalse(CompatibilityCatalog.IsHardwareVerified(verified with { FirmwareVersion = "AO" }));
         Assert.IsFalse(CompatibilityCatalog.IsHardwareVerified(verified with { Family = DeviceFamily.NewProxy }));
     }
+
+    [TestMethod]
+    public void CharacterisedPeakProLimits_AreSaneAndMatchOwnerStatedAppValues()
+    {
+        DeviceIdentity verified = new(DeviceFamily.PeakPro, "PEAKSHI V2", 13, "AN", null);
+
+        DeviceLimits? limits = CompatibilityCatalog.LimitsFor(verified);
+
+        Assert.IsNotNull(limits);
+        Assert.IsTrue(limits.IsSane, "Characterised limits must pass the safety model's sanity gate.");
+        Assert.AreEqual((400 - 32) * 5.0 / 9.0, limits.MinimumTemperatureCelsius, 0.000001);
+        Assert.AreEqual((600 - 32) * 5.0 / 9.0, limits.MaximumTemperatureCelsius, 0.000001);
+        Assert.AreEqual(TimeSpan.FromSeconds(30), limits.MinimumDuration);
+        Assert.AreEqual(TimeSpan.FromMinutes(2), limits.MaximumDuration);
+        Assert.AreEqual(15 * 5.0 / 9.0, limits.MaximumBoostTemperatureCelsius, 0.000001);
+        Assert.AreEqual(TimeSpan.FromSeconds(30), limits.MaximumBoostDuration);
+    }
+
+    [TestMethod]
+    public void LimitsCatalog_ReturnsNullForEveryUncharacterisedTupleVariant()
+    {
+        DeviceIdentity verified = new(DeviceFamily.PeakPro, "PEAKSHI V2", 13, "AN", null);
+
+        Assert.IsNull(CompatibilityCatalog.LimitsFor(verified with { Family = DeviceFamily.NewProxy }));
+        Assert.IsNull(CompatibilityCatalog.LimitsFor(verified with { ModelCode = 12 }));
+        Assert.IsNull(CompatibilityCatalog.LimitsFor(verified with { FirmwareVersion = "AO" }));
+    }
 }

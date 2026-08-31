@@ -15,6 +15,16 @@ public sealed class LoraxDeviceClient : IDeviceClient
     // 0-3 on 2026-08-31. 4096 remains bounded headroom above the largest observed value, 799.
     private const int MaximumProfileLightingBytes = 4096;
 
+    // Every PEAKSHI V2 firmware 39 survey from 2026-08-27 through 2026-08-31
+    // found that these two paths answer reads with status 0x01 and no payload.
+    // They are explicit measurements, not an empty-payload heuristic: a
+    // successful write to either path cannot be confirmed by reading it back.
+    private static readonly HashSet<string> PathsWithoutReadBackVerification = new(StringComparer.Ordinal)
+    {
+        LoraxPaths.LanternMode,
+        LoraxPaths.ModeCommand,
+    };
+
     private readonly ILoraxTransport transport;
     private readonly IDiagnosticLog diagnosticLog;
     private readonly bool traceWrites;
@@ -467,6 +477,7 @@ public sealed class LoraxDeviceClient : IDeviceClient
         double elapsedSeconds = LoraxValueCodec.ReadSingle(
             (await ReadAsync(LoraxPaths.StateElapsedTime, 4, cancellationToken).ConfigureAwait(false)).Span);
         bool verified = CompatibilityCatalog.IsHardwareVerified(identity);
+        DeviceLimits? limits = CompatibilityCatalog.LimitsFor(identity);
         DeviceOperatingState operatingState = MapOperatingState(operatingValue);
         TimeSpan stateTotal = SecondsOrZero(totalSeconds);
 
@@ -475,7 +486,7 @@ public sealed class LoraxDeviceClient : IDeviceClient
                 ? DeviceConnectionState.ConnectedControlEnabled
                 : DeviceConnectionState.ConnectedReadOnly,
             identity,
-            null,
+            limits,
             capabilities,
             MapChamber(chamberValue),
             operatingState,
@@ -692,6 +703,15 @@ public sealed class LoraxDeviceClient : IDeviceClient
         bool transmitted = await WriteAsync(path, value, cancellationToken).ConfigureAwait(false);
         if (!transmitted)
         {
+            diagnosticLog.Write(
+                $"WRITE VERIFICATION path=\"{path}\" result=skipped reason=trace-write-suppressed");
+            return;
+        }
+
+        if (PathsWithoutReadBackVerification.Contains(path))
+        {
+            diagnosticLog.Write(
+                $"WRITE VERIFICATION path=\"{path}\" result=skipped reason=read-back-unsupported");
             return;
         }
 
@@ -701,8 +721,14 @@ public sealed class LoraxDeviceClient : IDeviceClient
             cancellationToken).ConfigureAwait(false);
         if (!confirmed.Span.SequenceEqual(value.Span))
         {
+            diagnosticLog.Write(
+                $"WRITE VERIFICATION path=\"{path}\" result=failed " +
+                $"expectedLength={value.Length} actualLength={confirmed.Length}");
             throw new IOException("The device did not confirm a settings write.");
         }
+
+        diagnosticLog.Write(
+            $"WRITE VERIFICATION path=\"{path}\" result=verified length={confirmed.Length}");
     }
 
     private void SetSnapshot(DeviceSnapshot snapshot)

@@ -43,6 +43,113 @@ public sealed class LoraxDeviceClientTests
     }
 
     [TestMethod]
+    public async Task CharacterisedSnapshot_HasSaneLimitsAndReachesTheWriteActionSwitch()
+    {
+        FakeLoraxTransport transport = new()
+        {
+            ModelCode = 13,
+            FirmwareRevision = 39,
+            DeviceName = "PEAKSHI V2",
+        };
+        await using LoraxDeviceClient client = new(transport);
+
+        await client.ConnectAsync(
+            new DeviceCandidate("test-verified-peak", "PUFFCO PEAK", -40),
+            CancellationToken.None);
+
+        Assert.IsTrue(client.Snapshot.IsFirmwareVerified);
+        Assert.AreEqual(DeviceConnectionState.ConnectedControlEnabled, client.Snapshot.ConnectionState);
+        DeviceLimits? limits = client.Snapshot.Limits;
+        Assert.IsNotNull(limits);
+        Assert.IsTrue(limits.IsSane);
+
+        await client.SelectProfileAsync(0, CancellationToken.None);
+
+        Assert.AreEqual(1, transport.WriteCount, "The characterised snapshot must reach the allowed write action.");
+    }
+
+    [TestMethod]
+    public async Task LanternWrites_SendOneThenZeroWithoutReadBackAndLogSkippedVerification()
+    {
+        FakeLoraxTransport transport = new()
+        {
+            ModelCode = 13,
+            FirmwareRevision = 39,
+            DeviceName = "PEAKSHI V2",
+        };
+        RecordingDiagnosticLog diagnosticLog = new();
+        await using LoraxDeviceClient client = new(transport, diagnosticLog);
+        await client.ConnectAsync(
+            new DeviceCandidate("test-verified-peak", "PUFFCO PEAK", -40),
+            CancellationToken.None);
+        transport.ReadPaths.Clear();
+
+        await client.SetLanternModeAsync(enabled: true, CancellationToken.None);
+        await client.SetLanternModeAsync(enabled: false, CancellationToken.None);
+
+        Assert.AreEqual(2, transport.WriteCount);
+        Assert.HasCount(2, transport.Writes);
+        Assert.AreEqual(LoraxPaths.LanternMode, transport.Writes[0].Path);
+        Assert.AreEqual(LoraxPaths.LanternMode, transport.Writes[1].Path);
+        CollectionAssert.AreEqual(new byte[] { 1 }, transport.Writes[0].Value);
+        CollectionAssert.AreEqual(new byte[] { 0 }, transport.Writes[1].Value);
+        Assert.IsFalse(transport.ReadPaths.Contains(LoraxPaths.LanternMode, StringComparer.Ordinal));
+        StringAssert.Contains(
+            diagnosticLog.Text,
+            $"WRITE VERIFICATION path=\"{LoraxPaths.LanternMode}\" " +
+            "result=skipped reason=read-back-unsupported");
+    }
+
+    [TestMethod]
+    public async Task StealthWrite_NormalPathStillReadsBackAndLogsVerifiedSuccess()
+    {
+        FakeLoraxTransport transport = new()
+        {
+            ModelCode = 13,
+            FirmwareRevision = 39,
+            DeviceName = "PEAKSHI V2",
+        };
+        RecordingDiagnosticLog diagnosticLog = new();
+        await using LoraxDeviceClient client = new(transport, diagnosticLog);
+        await client.ConnectAsync(
+            new DeviceCandidate("test-verified-peak", "PUFFCO PEAK", -40),
+            CancellationToken.None);
+        transport.ReadPaths.Clear();
+
+        await client.SetStealthModeAsync(enabled: true, CancellationToken.None);
+
+        Assert.IsTrue(transport.ReadPaths.Contains(LoraxPaths.StealthMode, StringComparer.Ordinal));
+        StringAssert.Contains(
+            diagnosticLog.Text,
+            $"WRITE VERIFICATION path=\"{LoraxPaths.StealthMode}\" result=verified length=1");
+    }
+
+    [TestMethod]
+    public async Task StealthWrite_NormalPathStillFailsWhenReadBackDisagrees()
+    {
+        FakeLoraxTransport transport = new()
+        {
+            ModelCode = 13,
+            FirmwareRevision = 39,
+            DeviceName = "PEAKSHI V2",
+            MismatchedReadBackPath = LoraxPaths.StealthMode,
+        };
+        RecordingDiagnosticLog diagnosticLog = new();
+        await using LoraxDeviceClient client = new(transport, diagnosticLog);
+        await client.ConnectAsync(
+            new DeviceCandidate("test-verified-peak", "PUFFCO PEAK", -40),
+            CancellationToken.None);
+
+        await Assert.ThrowsExactlyAsync<IOException>(() =>
+            client.SetStealthModeAsync(enabled: true, CancellationToken.None));
+
+        Assert.IsTrue(transport.ReadPaths.Contains(LoraxPaths.StealthMode, StringComparer.Ordinal));
+        StringAssert.Contains(
+            diagnosticLog.Text,
+            $"WRITE VERIFICATION path=\"{LoraxPaths.StealthMode}\" result=failed");
+    }
+
+    [TestMethod]
     public async Task Connect_ReportsBatteryPercentageFromStateOfChargeInsteadOfCapacity()
     {
         FakeLoraxTransport transport = new();
@@ -183,6 +290,7 @@ public sealed class LoraxDeviceClientTests
         private static readonly byte[] Seed = Enumerable.Range(0, 16)
             .Select(value => (byte)value)
             .ToArray();
+        private readonly Dictionary<string, byte[]> writtenValues = new(StringComparer.Ordinal);
 
         public bool IsConnected { get; private set; }
 
@@ -190,15 +298,21 @@ public sealed class LoraxDeviceClientTests
 
         public uint ModelCode { get; init; }
 
+        public byte FirmwareRevision { get; init; }
+
         public string DeviceName { get; init; } = "TEST PEAK";
 
         public byte[]? FourthProfileLighting { get; init; }
+
+        public string? MismatchedReadBackPath { get; init; }
 
         public bool UnlockKeyMatched { get; private set; }
 
         public int WriteCount { get; private set; }
 
         public List<string> ReadPaths { get; } = [];
+
+        public List<(string Path, byte[] Value)> Writes { get; } = [];
 
         public Task<IReadOnlyList<DeviceCandidate>> ScanAsync(
             TimeSpan duration,
@@ -231,7 +345,7 @@ public sealed class LoraxDeviceClientTests
                 LoraxOpcode.GetAccessSeed => Result(Seed),
                 LoraxOpcode.UnlockAccess => Unlock(body),
                 LoraxOpcode.ReadShort => Read(body),
-                LoraxOpcode.WriteShort => CountWrite(),
+                LoraxOpcode.WriteShort => CountWrite(body),
                 _ => throw new InvalidOperationException($"Unexpected fake opcode {opcode}."),
             };
         }
@@ -266,12 +380,19 @@ public sealed class LoraxDeviceClientTests
 
         private byte[] ReadValue(string path)
         {
+            if (writtenValues.TryGetValue(path, out byte[]? writtenValue))
+            {
+                return string.Equals(path, MismatchedReadBackPath, StringComparison.Ordinal)
+                    ? writtenValue.Select(value => (byte)(value ^ 0xFF)).ToArray()
+                    : writtenValue;
+            }
+
             byte[]? profileValue = ReadProfileValue(path);
             return profileValue ?? path switch
             {
                 LoraxPaths.ModelCode => UInt32(ModelCode),
                 LoraxPaths.DeviceName => Encoding.UTF8.GetBytes(DeviceName),
-                LoraxPaths.FirmwareVersion => [0],
+                LoraxPaths.FirmwareVersion => [FirmwareRevision],
                 LoraxPaths.BatteryStateOfCharge => Single(64.679f),
                 LoraxPaths.BatteryCapacity => Single(6018.443f),
                 LoraxPaths.BatteryChargeState => [4],
@@ -313,8 +434,19 @@ public sealed class LoraxDeviceClientTests
             };
         }
 
-        private Task<ReadOnlyMemory<byte>> CountWrite()
+        private Task<ReadOnlyMemory<byte>> CountWrite(ReadOnlyMemory<byte> body)
         {
+            int terminator = body.Span[3..].IndexOf((byte)0);
+            if (terminator < 0)
+            {
+                throw new InvalidOperationException("Fake write path was not terminated.");
+            }
+
+            string path = Encoding.UTF8.GetString(body.Span.Slice(3, terminator));
+            int valueOffset = 4 + terminator;
+            byte[] value = body[valueOffset..].ToArray();
+            writtenValues[path] = value;
+            Writes.Add((path, value));
             WriteCount++;
             return Result([]);
         }

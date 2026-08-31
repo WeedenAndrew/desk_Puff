@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using DeskPuff.Core.Devices;
 
 namespace DeskPuff.App.Tests;
@@ -34,6 +35,8 @@ internal sealed class FakeDeviceClient : IDeviceClient
     public double LastBoostTemperatureCelsius { get; private set; }
 
     public TimeSpan LastBoostDuration { get; private set; }
+
+    public ConcurrentQueue<bool> LanternModeValues { get; } = new();
 
     public int TotalStateChangingCalls =>
         SelectProfileCallCount +
@@ -159,8 +162,12 @@ internal sealed class FakeDeviceClient : IDeviceClient
     public Task SetStealthModeAsync(bool enabled, CancellationToken cancellationToken) =>
         Task.CompletedTask;
 
-    public Task SetLanternModeAsync(bool enabled, CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+    public Task SetLanternModeAsync(bool enabled, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        LanternModeValues.Enqueue(enabled);
+        return Task.CompletedTask;
+    }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

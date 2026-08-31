@@ -133,6 +133,47 @@ public sealed class DiagnosticLoggingTests
         }
     }
 
+    [TestMethod]
+    public async Task WriteReplyWithFailureStatus_IsLoggedAndRejected()
+    {
+        string directory = CreateTemporaryDirectory();
+        string logPath = Path.Combine(directory, "write-status.log");
+        try
+        {
+            using (FileDiagnosticLog diagnosticLog = new(logPath))
+            await using (SidecarLoraxTransport transport = new(
+                diagnosticLog,
+                traceWrites: false,
+                (frame, sequence, cancellationToken) =>
+                    Task.FromResult<ReadOnlyMemory<byte>>(
+                        new byte[] { (byte)sequence, (byte)(sequence >> 8), 0x01 })))
+            {
+                byte[] body = LoraxProtocol.BuildWriteBody(
+                    LoraxPaths.LanternMode,
+                    offset: 0,
+                    flags: 0,
+                    new byte[] { 1 });
+
+                IOException exception = await Assert.ThrowsExactlyAsync<IOException>(() =>
+                    transport.RunCommandAsync(
+                        LoraxOpcode.WriteShort,
+                        body,
+                        maximumReplyLength: 0,
+                        CancellationToken.None));
+
+                StringAssert.Contains(exception.Message, "status 0x01");
+            }
+
+            string log = await File.ReadAllTextAsync(logPath);
+            StringAssert.Contains(log, $"path=\"{LoraxPaths.LanternMode}\"");
+            StringAssert.Contains(log, "status=0x01 payloadLength=0 payloadHex=-");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string CreateTemporaryDirectory()
     {
         string directory = Path.Combine(
