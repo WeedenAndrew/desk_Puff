@@ -24,10 +24,16 @@ Bluetooth service are out of scope. Exact support and verification status is in
 
 ## What works today
 
-The interface is complete and runs from a deterministic demo client: profile
-selection and editing, colorways, start and stop, quick hits, running a saved
-profile for one session, and device handoff — all without opening Bluetooth or
-touching hardware.
+**The Bluetooth path runs end to end on real hardware.** A Peak Pro is
+discovered, bonded, authenticated, and read: device name, chamber, battery,
+charge state, live heater temperature and session timing, the four device
+profile slots and their colorways. Control has been confirmed on one device —
+switching profiles, stealth mode, starting a heat cycle, and disconnecting
+cleanly.
+
+There is also a deterministic demo client that exercises the whole interface
+with no Bluetooth and no hardware, which is how the screenshots below are
+produced.
 
 | Profiles | Color | Settings |
 |---|---|---|
@@ -40,15 +46,21 @@ and the display says **SAVED PROFILE • NOT ON DEVICE** so it can never be
 mistaken for the device's own state.
 
 > [!IMPORTANT]
-> **The Bluetooth path is written but not yet reachable in a build.** Bluetooth
-> is opened by a separate Rust helper, `desk-puff-ble`, which the app expects at
-> `ble/desk-puff-ble.exe` beside itself. Nothing in the build, publish profile,
-> or CI compiles or stages that helper, so a published `desk_Puff.exe` cannot
-> connect to anything. `--demo` is the only mode that runs end to end.
+> **Control is limited to hardware that has been characterised, and the list is
+> short.** Writes require an exact model and firmware pair on an allowlist, plus
+> temperature and duration limits recorded for that pair. The list currently
+> holds **one entry** — the author's own Peak Pro. Every other device connects
+> read-only and says so.
+>
+> The gate sits below the interface. Enabling a button cannot bypass it, and
+> neither can editing the allowlist alone: a device with no recorded limits is
+> refused even if its firmware is listed.
 
-Real-device state-changing writes are locked because no model and firmware pair
-has completed the owned-hardware safety sequence. The empty firmware allowlist
-is enforced below the UI; changing or enabling a button cannot bypass it.
+Bluetooth is opened by a separate Rust helper, `desk-puff-ble`, which the
+application launches from `ble/desk-puff-ble.exe` beside itself. CI builds that
+helper, runs its tests, and stages it into the published package, so a
+downloaded build can connect. Building locally with the `dotnet` commands below
+does **not** produce it — see [Build and test](#build-and-test).
 
 Running a saved profile for one session is implemented in the application and
 the demo client only. The Bluetooth client does not implement that path, so on
@@ -80,12 +92,17 @@ Detail in [docs/SAFETY.md](docs/SAFETY.md),
 The published `desk_Puff.exe` is self-contained for 64-bit Windows 10/11.
 
 ```powershell
+.\desk_Puff.exe
 .\desk_Puff.exe --demo
 .\desk_Puff.exe --trace-writes
 ```
 
+With no flag it opens Bluetooth and looks for a device. It never connects to an
+account or cloud service, and it sends nothing anywhere but the e-rig in front
+of you.
+
 `--demo` exercises the whole interface without opening Bluetooth or addressing
-hardware. It never connects to an account or cloud service.
+hardware.
 
 `--trace-writes` connects to hardware and performs reads normally, but any write
 that passes the existing safety policy is fully constructed, logged, and then
@@ -108,8 +125,16 @@ dotnet format  .\desk_Puff.slnx --verify-no-changes --no-restore
 
 `DEMO.cmd` publishes and launches the demo in one step.
 
-Bluetooth additionally needs the Rust helper in `native/desk-puff-ble`, which is
-a separate build and is **not** produced by the commands above.
+Bluetooth additionally needs the Rust helper in `native/desk-puff-ble`, which
+those commands do **not** produce. Build it separately:
+
+```powershell
+cargo build --release --locked
+```
+
+then copy `target\release\desk-puff-ble.exe` into a `ble\` folder beside
+`desk_Puff.exe`. CI does both steps and uploads the assembled package, so a
+downloaded build already has it.
 
 ## Architecture
 
