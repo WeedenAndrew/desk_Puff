@@ -114,16 +114,61 @@ state. Each run writes a UTF-8 diagnostic log beside the executable as
 ## Build and test
 
 .NET 10 on Windows 10/11, Avalonia for the interface. A workspace-local SDK can
-live in `.tools/dotnet` and is ignored by Git.
+live in `.tools/dotnet` and is ignored by Git. `global.json` pins SDK 10.0.400,
+and a contributor may have no suitable SDK on `PATH`, so prefer the local SDK
+when it exists:
 
 ```powershell
-dotnet restore .\desk_Puff.slnx --locked-mode
-dotnet build   .\desk_Puff.slnx -c Release --no-restore
-dotnet test    .\desk_Puff.slnx -c Release --no-build
-dotnet format  .\desk_Puff.slnx --verify-no-changes --no-restore
+$dotnet = if (Test-Path .\.tools\dotnet\dotnet.exe) {
+    (Resolve-Path .\.tools\dotnet\dotnet.exe).Path
+} else {
+    (Get-Command dotnet -ErrorAction Stop).Source
+}
+
+& $dotnet restore .\desk_Puff.slnx --locked-mode
+& $dotnet build   .\desk_Puff.slnx -c Release --no-restore
+& $dotnet test    .\desk_Puff.slnx -c Release --no-build
+& $dotnet format  .\desk_Puff.slnx --verify-no-changes --no-restore
 ```
 
-`DEMO.cmd` publishes and launches the demo in one step.
+### Publish and launch the demo
+
+With `$dotnet` selected as above, publish and launch the hardware-free demo
+from the repository root:
+
+```powershell
+& $dotnet restore .\desk_Puff.slnx --locked-mode
+& $dotnet publish .\src\DeskPuff.App\DeskPuff.App.csproj `
+    -c Release --no-restore -p:PublishProfile=Windows-x64
+& .\artifacts\publish\win-x64\desk_Puff.exe --demo
+```
+
+Keep restore and publish as separate commands, and keep `--no-restore` on the
+publish. A self-contained publish otherwise makes the SDK inject
+`Microsoft.NET.ILLink.Tasks` into `packages.lock.json`, even though the project
+does not declare it. CI's later `dotnet restore --locked-mode` then fails with
+NU1004. Once published, the same executable can be launched with `--demo`
+again without rebuilding.
+
+### Run the read-only device prober
+
+Wake the device and close the Puffco phone app first; a BLE peripheral accepts
+only one central connection at a time. Run the retained PowerShell prober from
+its own directory with profiles disabled and the Windows PowerShell execution
+policy bypassed for this process:
+
+```powershell
+Push-Location .\tools\capture
+try {
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\Capture-DeviceNoise.ps1
+} finally {
+    Pop-Location
+}
+```
+
+The prober is read-only: it never constructs the write opcode and cannot heat
+the device. It leaves `survey-<stamp>.log` and `frames-<stamp>.jsonl` beside the
+script so decoded results and raw frames remain paired.
 
 Bluetooth additionally needs the Rust helper in `native/desk-puff-ble`, which
 those commands do **not** produce. Build it separately:
