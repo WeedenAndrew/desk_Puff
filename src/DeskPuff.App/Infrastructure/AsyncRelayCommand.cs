@@ -1,12 +1,15 @@
 using System.Windows.Input;
+using DeskPuff.Core.Diagnostics;
 
 namespace DeskPuff.App.Infrastructure;
 
 internal sealed class AsyncRelayCommand(
     Func<CancellationToken, Task> execute,
     Action<Exception> handleError,
-    Func<bool>? canExecute = null) : ICommand, IAsyncDisposable
+    Func<bool>? canExecute = null,
+    IDiagnosticLog? diagnostics = null) : ICommand, IAsyncDisposable
 {
+    private readonly IDiagnosticLog diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
     private CancellationTokenSource? executionCancellation;
     private Task currentExecution = Task.CompletedTask;
     private bool isExecuting;
@@ -36,8 +39,9 @@ internal sealed class AsyncRelayCommand(
         {
             executionCancellation?.Cancel();
         }
-        catch (ObjectDisposedException)
+        catch (ObjectDisposedException exception)
         {
+            diagnosticLog.WriteException("Cancel completed command", exception);
             // The execution completed between reading the field and cancellation.
         }
     }
@@ -65,8 +69,9 @@ internal sealed class AsyncRelayCommand(
         {
             await execute(cancellation.Token);
         }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        catch (OperationCanceledException exception) when (cancellation.IsCancellationRequested)
         {
+            diagnosticLog.WriteException("Cancel asynchronous command", exception);
         }
         catch (Exception exception)
         {

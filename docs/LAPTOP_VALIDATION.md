@@ -46,10 +46,17 @@ Do not test a live base if restore, build, tests, formatting, or publish fails.
 The deterministic UI can be checked without Bluetooth by running the published
 executable with `--demo`.
 
+To inspect the complete frames that an owned, hardware-verified device would
+receive without transmitting any writes, run the published executable with
+`--trace-writes`. Reads and safety checks still run normally. An allowed write
+is constructed and logged before it is discarded; a policy-blocked write stays
+blocked. The UTF-8 log is written beside the executable as
+`desk_Puff-<yyyyMMdd-HHmmss>.log` and never includes a serial number.
+
 ## Read-only live pass
 
 1. Close the phone app and confirm the base is idle and cool.
-2. Launch the published `desk_Puff.exe` without `--demo`.
+2. Launch the published `desk_Puff.exe` without `--demo` or `--trace-writes`.
 3. Scan and select only the base you own. Complete ordinary Windows pairing if
    Windows requests it.
 4. Confirm the application reports the exact firmware as read-only. Stop if any

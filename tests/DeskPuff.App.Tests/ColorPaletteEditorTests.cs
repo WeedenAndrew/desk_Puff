@@ -46,6 +46,8 @@ public sealed class ColorPaletteEditorTests
                     ColorHex = DevicePalette[0],
                     ColorPalette = DevicePalette,
                     HasDeviceColor = true,
+                    ColorwayName = "DISCO",
+                    LampName = "pikaled2",
                 },
                 .. profiles.Skip(1),
             ]);
@@ -56,7 +58,9 @@ public sealed class ColorPaletteEditorTests
 
             Assert.AreEqual("COLOR 1 OF 25", viewModel.ColorStopPositionText);
             Assert.AreEqual(DevicePalette[0], viewModel.WheelColor);
-            Assert.HasCount(25, viewModel.EditorPaletteBrush.GradientStops);
+            Assert.AreEqual("DISCO", viewModel.CurrentColorProfileName);
+            StringAssert.Contains(viewModel.ColorPageContextText, "pikaled2");
+            Assert.HasCount(33, viewModel.EditorPaletteBrush.GradientStops);
 
             viewModel.SelectColorStopAtFraction(0.75);
 
@@ -66,12 +70,11 @@ public sealed class ColorPaletteEditorTests
             viewModel.WheelColor = "#123456";
 
             Assert.AreEqual("#123456", viewModel.WheelColor);
-            Assert.AreEqual(
-                Color.Parse("#123456"),
-                viewModel.EditorPaletteBrush.GradientStops[18].Color);
-            Assert.AreEqual(
-                Color.Parse(DevicePalette[17]),
-                viewModel.EditorPaletteBrush.GradientStops[17].Color);
+            Assert.AreEqual("CUSTOM COLORWAY", viewModel.CurrentColorProfileName);
+            viewModel.PreviousColorStopCommand.Execute(null);
+            Assert.AreEqual(DevicePalette[17], viewModel.WheelColor);
+            viewModel.NextColorStopCommand.Execute(null);
+            Assert.AreEqual("#123456", viewModel.WheelColor);
             Assert.IsFalse(viewModel.SaveProfileCommand.CanExecute(null));
             Assert.IsFalse(viewModel.SaveHeatingProfileCommand.CanExecute(null));
             Assert.AreEqual(0, client.TotalStateChangingCalls);
@@ -79,9 +82,29 @@ public sealed class ColorPaletteEditorTests
         });
 
     [TestMethod]
-    public void TwentyFiveStopRingSegments_JoinWithTheSameColorAndRetainEveryStop() =>
+    public void PerceptualDisplayInterpolation_StaysSaturatedAndLeavesAnchorsUnchanged() =>
         HeadlessRender.OnUiThread(() =>
         {
+            string[] anchors = ["#FF00FF", "#00FF00"];
+            string[] original = [.. anchors];
+
+            LinearGradientBrush brush = PalettePresentation.Sweep(anchors);
+            Color midpoint = brush.GradientStops[16].Color;
+            int maximum = Math.Max(midpoint.R, Math.Max(midpoint.G, midpoint.B));
+            int minimum = Math.Min(midpoint.R, Math.Min(midpoint.G, midpoint.B));
+            double saturation = maximum == 0 ? 0 : (maximum - minimum) / (double)maximum;
+
+            Assert.IsGreaterThan(0.75, saturation, "A midpoint between saturated hues must not collapse toward gray.");
+            CollectionAssert.AreEqual(original, anchors, "Display interpolation must not alter stored anchors.");
+            Assert.HasCount(33, brush.GradientStops);
+            return Task.FromResult(true);
+        });
+
+    [TestMethod]
+    public void PerceptualRingSegments_JoinAndLeaveThePaletteUnchanged() =>
+        HeadlessRender.OnUiThread(() =>
+        {
+            string[] original = [.. DevicePalette];
             LinearGradientBrush[] arcs =
             {
                 PalettePresentation.RingSegment(DevicePalette, 0, 0, 0, 1, 1),
@@ -98,16 +121,10 @@ public sealed class ColorPaletteEditorTests
                     current.GradientStops[^1].Color,
                     next.GradientStops[0].Color,
                     $"Ring segments {index + 1} and {(index + 1) % arcs.Length + 1} must share a boundary color.");
+                Assert.HasCount(9, current.GradientStops);
             }
 
-            HashSet<Color> renderedStops = arcs
-                .SelectMany(arc => arc.GradientStops)
-                .Select(stop => stop.Color)
-                .ToHashSet();
-            foreach (string color in DevicePalette)
-            {
-                Assert.IsTrue(renderedStops.Contains(Color.Parse(color)), $"The ring omitted device stop {color}.");
-            }
+            CollectionAssert.AreEqual(original, DevicePalette);
 
             return Task.FromResult(true);
         });

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DeskPuff.Core.Devices;
+using DeskPuff.Core.Diagnostics;
 
 namespace DeskPuff.Core.Profiles;
 
@@ -41,7 +42,7 @@ public sealed record LocalHeatingProfile
 
 public sealed record StoredLocalProfile<T>(string FileName, T Profile);
 
-public sealed class LocalProfileLibrary(string rootPath)
+public sealed class LocalProfileLibrary(string rootPath, IDiagnosticLog? diagnostics = null)
 {
     private const int MaximumDocumentBytes = 16 * 1024;
     private const int MaximumNameLength = 64;
@@ -54,6 +55,7 @@ public sealed class LocalProfileLibrary(string rootPath)
         PropertyNameCaseInsensitive = true,
         WriteIndented = true,
     };
+    private readonly IDiagnosticLog diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
 
     private readonly string colorDirectory = Path.Combine(
         Path.GetFullPath(rootPath),
@@ -107,7 +109,7 @@ public sealed class LocalProfileLibrary(string rootPath)
     public Task DeleteHeatingAsync(string fileName, CancellationToken cancellationToken) =>
         DeleteAsync(heatingDirectory, fileName, cancellationToken);
 
-    private static async Task<IReadOnlyList<StoredLocalProfile<T>>> LoadAsync<T>(
+    private async Task<IReadOnlyList<StoredLocalProfile<T>>> LoadAsync<T>(
         string directory,
         Func<T, bool> validator,
         CancellationToken cancellationToken)
@@ -149,13 +151,14 @@ public sealed class LocalProfileLibrary(string rootPath)
                 UnauthorizedAccessException or
                 JsonException)
             {
+                diagnosticLog.WriteException("Load local profile", exception);
             }
         }
 
         return profiles;
     }
 
-    private static async Task<StoredLocalProfile<T>> SaveAsync<T>(
+    private async Task<StoredLocalProfile<T>> SaveAsync<T>(
         string directory,
         string profileName,
         T profile,
@@ -203,8 +206,9 @@ public sealed class LocalProfileLibrary(string rootPath)
             {
                 File.Delete(temporaryPath);
             }
-            catch (IOException)
+            catch (IOException exception)
             {
+                diagnosticLog.WriteException("Delete temporary local profile", exception);
             }
         }
     }

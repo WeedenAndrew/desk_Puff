@@ -17,6 +17,14 @@ Rust executable, `desk-puff-ble`, and speaks a line-oriented JSON protocol to it
 over stdin and stdout, with binary payloads base64-encoded. The Rust side uses
 `btleplug` and is built with `panic = "abort"`.
 
+Each application run creates a UTF-8 diagnostic log beside the executable.
+Managed Lorax request/reply lines keep the status header separate from payload,
+and sidecar stderr is copied into the same timestamped log. Identity logging is
+limited to family, model code, quoted firmware, and verification state; serial
+numbers are not recorded. With `--trace-writes`, the normal policy checks still
+run, but an allowed write is discarded at the transport boundary after its
+complete frame has been constructed and logged.
+
 The helper is located at `AppContext.BaseDirectory/ble/desk-puff-ble[.exe]`.
 Resolution deliberately does not consult `PATH`, the working directory, or an
 environment variable, so the binary cannot be substituted by altering the

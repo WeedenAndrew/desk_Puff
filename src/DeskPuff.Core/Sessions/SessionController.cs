@@ -1,13 +1,16 @@
 using DeskPuff.Core.Devices;
+using DeskPuff.Core.Diagnostics;
 using DeskPuff.Core.Safety;
 
 namespace DeskPuff.Core.Sessions;
 
 public sealed class SessionController(
     IDeviceClient client,
-    DeviceSafetyPolicy safetyPolicy) : IAsyncDisposable
+    DeviceSafetyPolicy safetyPolicy,
+    IDiagnosticLog? diagnostics = null) : IAsyncDisposable
 {
     private readonly SemaphoreSlim commandGate = new(1, 1);
+    private readonly IDiagnosticLog diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
     private int boostsApplied;
     private int disposeRequested;
 
@@ -48,7 +51,9 @@ public sealed class SessionController(
         RunSerializedAsync(
             async () =>
             {
-                safetyPolicy.ValidateProfileSelection(profileIndex, Snapshot).ThrowIfDenied();
+                EnsureAllowed(
+                    DeviceAction.SelectProfile,
+                    safetyPolicy.ValidateProfileSelection(profileIndex, Snapshot));
                 await client.SelectProfileAsync(profileIndex, cancellationToken).ConfigureAwait(false);
             },
             cancellationToken);
@@ -57,7 +62,7 @@ public sealed class SessionController(
         => RunSerializedAsync(
             async () =>
             {
-                safetyPolicy.ValidateProfile(profile, Snapshot).ThrowIfDenied();
+                EnsureAllowed(DeviceAction.UpdateProfile, safetyPolicy.ValidateProfile(profile, Snapshot));
                 await client.UpdateProfileAsync(profile, cancellationToken).ConfigureAwait(false);
             },
             cancellationToken);
@@ -86,6 +91,7 @@ public sealed class SessionController(
         double temperatureCelsius,
         CancellationToken cancellationToken) =>
         RunBoostAsync(
+            DeviceAction.BoostTemperature,
             () => safetyPolicy.ValidateTemperatureBoost(
                 Snapshot,
                 boostsApplied,
@@ -95,6 +101,7 @@ public sealed class SessionController(
 
     public Task BoostTimeAsync(TimeSpan duration, CancellationToken cancellationToken) =>
         RunBoostAsync(
+            DeviceAction.BoostTime,
             () => safetyPolicy.ValidateTimeBoost(Snapshot, boostsApplied, duration),
             () => client.BoostTimeAsync(duration, cancellationToken),
             cancellationToken);
@@ -137,23 +144,35 @@ public sealed class SessionController(
         RunSerializedAsync(
             async () =>
             {
-                safetyPolicy.Evaluate(action, Snapshot).ThrowIfDenied();
+                EnsureAllowed(action, safetyPolicy.Evaluate(action, Snapshot));
                 await operation().ConfigureAwait(false);
             },
             cancellationToken);
 
     private Task RunBoostAsync(
+        DeviceAction action,
         Func<SafetyDecision> validate,
         Func<Task> operation,
         CancellationToken cancellationToken) =>
         RunSerializedAsync(
             async () =>
             {
-                validate().ThrowIfDenied();
+                EnsureAllowed(action, validate());
                 await operation().ConfigureAwait(false);
                 boostsApplied++;
             },
             cancellationToken);
+
+    private void EnsureAllowed(DeviceAction action, SafetyDecision decision)
+    {
+        if (!decision.IsAllowed)
+        {
+            diagnosticLog.Write(
+                $"WRITE BLOCKED action={action} reason=\"{decision.Reason}\"");
+        }
+
+        decision.ThrowIfDenied();
+    }
 
     private async Task RunSerializedAsync(
         Func<Task> operation,

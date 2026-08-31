@@ -1,15 +1,23 @@
 using System.Buffers.Binary;
 using DeskPuff.Bluetooth.Windows.Compatibility;
+using DeskPuff.Bluetooth.Windows.Diagnostics;
 using DeskPuff.Bluetooth.Windows.Protocol;
 using DeskPuff.Bluetooth.Windows.Transport;
 using DeskPuff.Core.Devices;
+using DeskPuff.Core.Diagnostics;
 using DeskPuff.Core.Safety;
 
 namespace DeskPuff.Bluetooth.Windows;
 
 public sealed class LoraxDeviceClient : IDeviceClient
 {
+    // PEAKSHI V2 firmware 39 returned 517, 466, 517, and 799 bytes for profile slots
+    // 0-3 on 2026-08-31. 4096 remains bounded headroom above the largest observed value, 799.
+    private const int MaximumProfileLightingBytes = 4096;
+
     private readonly ILoraxTransport transport;
+    private readonly IDiagnosticLog diagnosticLog;
+    private readonly bool traceWrites;
     private readonly DeviceSafetyPolicy safetyPolicy = new();
     private DeviceCandidate? connectedCandidate;
     private DeviceIdentity? connectedIdentity;
@@ -19,13 +27,31 @@ public sealed class LoraxDeviceClient : IDeviceClient
     private bool disposed;
 
     public LoraxDeviceClient()
-        : this(new SidecarLoraxTransport())
+        : this(NullDiagnosticLog.Instance, traceWrites: false)
+    {
+    }
+
+    public LoraxDeviceClient(IDiagnosticLog diagnosticLog, bool traceWrites = false)
+        : this(
+            new SidecarLoraxTransport(diagnosticLog, traceWrites),
+            diagnosticLog,
+            traceWrites)
     {
     }
 
     internal LoraxDeviceClient(ILoraxTransport transport)
+        : this(transport, NullDiagnosticLog.Instance, traceWrites: false)
+    {
+    }
+
+    internal LoraxDeviceClient(
+        ILoraxTransport transport,
+        IDiagnosticLog diagnosticLog,
+        bool traceWrites = false)
     {
         this.transport = transport;
+        this.diagnosticLog = diagnosticLog;
+        this.traceWrites = traceWrites;
     }
 
     public DeviceSnapshot Snapshot { get; private set; } = DeviceSnapshot.Disconnected;
@@ -60,6 +86,7 @@ public sealed class LoraxDeviceClient : IDeviceClient
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            diagnosticLog.WriteException("Connect device", exception);
             SetSnapshot(DeviceSnapshot.Disconnected with
             {
                 ConnectionState = DeviceConnectionState.Faulted,
@@ -111,20 +138,38 @@ public sealed class LoraxDeviceClient : IDeviceClient
                 (await ReadAsync(LoraxPaths.ProfileBoostTime(index), 4, cancellationToken).ConfigureAwait(false)).Span);
             string[] colorPalette;
             bool hasDeviceColor;
+            string? colorwayName = null;
+            string? lampName = null;
             try
             {
                 ReadOnlyMemory<byte> lighting = await ReadAllAsync(
                     LoraxPaths.ProfileColor(index),
-                    maximumLength: 512,
+                    maximumLength: MaximumProfileLightingBytes,
                     cancellationToken).ConfigureAwait(false);
-                IReadOnlyList<string> decodedPalette = ProfileLightingCodec.DecodeColors(lighting.Span);
-                hasDeviceColor = decodedPalette.Count > 0;
+                ProfileLightingCodec.DecodedLighting decoded =
+                    ProfileLightingCodec.DecodeLighting(lighting.Span);
+                string paletteSourceName = decoded.Source switch
+                {
+                    ProfileLightingCodec.PaletteSource.MetaUserColors => "meta.userColors",
+                    ProfileLightingCodec.PaletteSource.LampParamColor => "lamp.param.color",
+                    _ => "none",
+                };
+                colorwayName = decoded.MoodName;
+                lampName = decoded.LampName;
+                diagnosticLog.Write(
+                    $"PROFILE PALETTE index={index} source={paletteSourceName} colorCount={decoded.Colors.Count} " +
+                    $"moodName={FormatDiagnosticMetadata(colorwayName)} lampName={FormatDiagnosticMetadata(lampName)}");
+                hasDeviceColor = decoded.Colors.Count > 0;
                 colorPalette = hasDeviceColor
-                    ? decodedPalette.ToArray()
+                    ? decoded.Colors.ToArray()
                     : [defaultColors[index]];
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidDataException)
             {
+                diagnosticLog.WriteException($"Decode device color profile {index}", exception);
+                diagnosticLog.Write(
+                    $"PROFILE PALETTE index={index} source=app-default colorCount=1 " +
+                    $"moodName=- lampName=- reason=decode-error");
                 colorPalette = [defaultColors[index]];
                 hasDeviceColor = false;
             }
@@ -141,6 +186,8 @@ public sealed class LoraxDeviceClient : IDeviceClient
             {
                 ColorPalette = colorPalette,
                 HasDeviceColor = hasDeviceColor,
+                ColorwayName = colorwayName,
+                LampName = lampName,
             });
         }
 
@@ -149,16 +196,23 @@ public sealed class LoraxDeviceClient : IDeviceClient
 
     public async Task SelectProfileAsync(int profileIndex, CancellationToken cancellationToken)
     {
-        safetyPolicy.Evaluate(DeviceAction.SelectProfile, Snapshot).ThrowIfDenied();
+        EnsureAllowed(
+            DeviceAction.SelectProfile,
+            safetyPolicy.Evaluate(DeviceAction.SelectProfile, Snapshot));
         if (profileIndex is < 0 or > 3)
         {
             throw new ArgumentOutOfRangeException(nameof(profileIndex));
         }
 
-        await WriteAsync(
+        bool transmitted = await WriteAsync(
             LoraxPaths.ActiveProfile,
             new byte[] { (byte)profileIndex },
             cancellationToken).ConfigureAwait(false);
+        if (!transmitted)
+        {
+            return;
+        }
+
         ReadOnlyMemory<byte> readBack = await ReadAsync(
             LoraxPaths.ActiveProfile,
             1,
@@ -173,7 +227,7 @@ public sealed class LoraxDeviceClient : IDeviceClient
 
     public async Task UpdateProfileAsync(HeatProfile profile, CancellationToken cancellationToken)
     {
-        safetyPolicy.ValidateProfile(profile, Snapshot).ThrowIfDenied();
+        EnsureAllowed(DeviceAction.UpdateProfile, safetyPolicy.ValidateProfile(profile, Snapshot));
         await WriteAndVerifyAsync(
             LoraxPaths.ProfileName(profile.Index),
             LoraxValueCodec.WriteString(profile.Name),
@@ -206,43 +260,59 @@ public sealed class LoraxDeviceClient : IDeviceClient
 
     public async Task StartSessionAsync(CancellationToken cancellationToken)
     {
-        safetyPolicy.Evaluate(DeviceAction.StartSession, Snapshot).ThrowIfDenied();
-        await WriteAsync(
+        EnsureAllowed(
+            DeviceAction.StartSession,
+            safetyPolicy.Evaluate(DeviceAction.StartSession, Snapshot));
+        bool transmitted = await WriteAsync(
             LoraxPaths.ModeCommand,
             new byte[] { (byte)DeviceModeCommand.StartHeatCycle },
             cancellationToken).ConfigureAwait(false);
-        await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        if (transmitted)
+        {
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task StopSessionAsync(CancellationToken cancellationToken)
     {
-        safetyPolicy.Evaluate(DeviceAction.StopSession, Snapshot).ThrowIfDenied();
-        await WriteAsync(
+        EnsureAllowed(
+            DeviceAction.StopSession,
+            safetyPolicy.Evaluate(DeviceAction.StopSession, Snapshot));
+        bool transmitted = await WriteAsync(
             LoraxPaths.ModeCommand,
             new byte[] { (byte)DeviceModeCommand.AbortHeatCycle },
             cancellationToken).ConfigureAwait(false);
-        await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        if (transmitted)
+        {
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public Task BoostTemperatureAsync(
         double temperatureCelsius,
         CancellationToken cancellationToken)
     {
-        safetyPolicy.ValidateTemperatureBoost(Snapshot, 0, temperatureCelsius).ThrowIfDenied();
+        EnsureAllowed(
+            DeviceAction.BoostTemperature,
+            safetyPolicy.ValidateTemperatureBoost(Snapshot, 0, temperatureCelsius));
         throw new DeviceSafetyException(
             "Independent temperature boost awaits hardware validation for this firmware.");
     }
 
     public Task BoostTimeAsync(TimeSpan duration, CancellationToken cancellationToken)
     {
-        safetyPolicy.ValidateTimeBoost(Snapshot, 0, duration).ThrowIfDenied();
+        EnsureAllowed(
+            DeviceAction.BoostTime,
+            safetyPolicy.ValidateTimeBoost(Snapshot, 0, duration));
         throw new DeviceSafetyException(
             "Independent time boost awaits hardware validation for this firmware.");
     }
 
     public async Task SetStealthModeAsync(bool enabled, CancellationToken cancellationToken)
     {
-        safetyPolicy.Evaluate(DeviceAction.SetStealthMode, Snapshot).ThrowIfDenied();
+        EnsureAllowed(
+            DeviceAction.SetStealthMode,
+            safetyPolicy.Evaluate(DeviceAction.SetStealthMode, Snapshot));
         await WriteAndVerifyAsync(
             LoraxPaths.StealthMode,
             new byte[] { enabled ? (byte)1 : (byte)0 },
@@ -251,7 +321,9 @@ public sealed class LoraxDeviceClient : IDeviceClient
 
     public async Task SetLanternModeAsync(bool enabled, CancellationToken cancellationToken)
     {
-        safetyPolicy.Evaluate(DeviceAction.SetLanternMode, Snapshot).ThrowIfDenied();
+        EnsureAllowed(
+            DeviceAction.SetLanternMode,
+            safetyPolicy.Evaluate(DeviceAction.SetLanternMode, Snapshot));
         await WriteAndVerifyAsync(
             LoraxPaths.LanternMode,
             new byte[] { enabled ? (byte)1 : (byte)0 },
@@ -312,6 +384,11 @@ public sealed class LoraxDeviceClient : IDeviceClient
             modelCode,
             firmware,
             serialNumber: null);
+        bool isHardwareVerified = CompatibilityCatalog.IsHardwareVerified(connectedIdentity);
+        BluetoothDiagnosticMessages.WriteIdentity(
+            diagnosticLog,
+            connectedIdentity,
+            isHardwareVerified);
         connectedCapabilities = CompatibilityCatalog.CapabilitiesFor(connectedIdentity);
         return await ReadTelemetrySnapshotAsync(
             forceProfileRead: true,
@@ -472,6 +549,7 @@ public sealed class LoraxDeviceClient : IDeviceClient
         }
         catch (Exception exception) when (exception is IOException or TimeoutException or InvalidDataException)
         {
+            diagnosticLog.WriteException("Read battery state of charge", exception);
             double capacity = LoraxValueCodec.ReadSingle(
                 (await ReadAsync(LoraxPaths.BatteryCapacity, 4, cancellationToken).ConfigureAwait(false)).Span);
             supportedBatteryPath = LoraxPaths.BatteryCapacity;
@@ -505,7 +583,7 @@ public sealed class LoraxDeviceClient : IDeviceClient
         CancellationToken cancellationToken)
     {
         const int chunkSize = 125;
-        if (maximumLength is < 1 or > 1024)
+        if (maximumLength is < 1 or > MaximumProfileLightingBytes)
         {
             throw new ArgumentOutOfRangeException(nameof(maximumLength));
         }
@@ -536,6 +614,8 @@ public sealed class LoraxDeviceClient : IDeviceClient
             }
         }
 
+        diagnosticLog.Write(
+            $"READ ASSEMBLED path=\"{path}\" totalLength={output.Length}");
         if (output.Length == maximumLength)
         {
             throw new InvalidDataException("A Lorax value reached its bounded read limit.");
@@ -544,13 +624,13 @@ public sealed class LoraxDeviceClient : IDeviceClient
         return output.ToArray();
     }
 
-    private async Task WriteAsync(
+    private async Task<bool> WriteAsync(
         string path,
         ReadOnlyMemory<byte> value,
         CancellationToken cancellationToken) =>
         await WriteAsync(path, offset: 0, value, cancellationToken).ConfigureAwait(false);
 
-    private async Task WriteAsync(
+    private async Task<bool> WriteAsync(
         string path,
         ushort offset,
         ReadOnlyMemory<byte> value,
@@ -566,6 +646,8 @@ public sealed class LoraxDeviceClient : IDeviceClient
         {
             throw new InvalidDataException("The device returned an unexpected write response.");
         }
+
+        return !traceWrites;
     }
 
     private async Task WriteProfileLightingAndVerifyAsync(
@@ -574,19 +656,26 @@ public sealed class LoraxDeviceClient : IDeviceClient
     {
         byte[] encoded = ProfileLightingCodec.EncodeSolid(profile.ColorPalette);
         const int chunkSize = 80;
+        bool allTransmitted = true;
         for (int offset = 0; offset < encoded.Length; offset += chunkSize)
         {
             int length = Math.Min(chunkSize, encoded.Length - offset);
-            await WriteAsync(
+            bool transmitted = await WriteAsync(
                 LoraxPaths.ProfileColor(profile.Index),
                 checked((ushort)offset),
                 encoded.AsMemory(offset, length),
                 cancellationToken).ConfigureAwait(false);
+            allTransmitted &= transmitted;
+        }
+
+        if (!allTransmitted)
+        {
+            return;
         }
 
         ReadOnlyMemory<byte> confirmed = await ReadAllAsync(
             LoraxPaths.ProfileColor(profile.Index),
-            maximumLength: 512,
+            maximumLength: MaximumProfileLightingBytes,
             cancellationToken).ConfigureAwait(false);
         IReadOnlyList<string> confirmedColors = ProfileLightingCodec.DecodeColors(confirmed.Span);
         if (!confirmedColors.SequenceEqual(profile.ColorPalette, StringComparer.OrdinalIgnoreCase))
@@ -600,7 +689,12 @@ public sealed class LoraxDeviceClient : IDeviceClient
         ReadOnlyMemory<byte> value,
         CancellationToken cancellationToken)
     {
-        await WriteAsync(path, value, cancellationToken).ConfigureAwait(false);
+        bool transmitted = await WriteAsync(path, value, cancellationToken).ConfigureAwait(false);
+        if (!transmitted)
+        {
+            return;
+        }
+
         ReadOnlyMemory<byte> confirmed = await ReadAsync(
             path,
             checked((ushort)value.Length),
@@ -624,6 +718,17 @@ public sealed class LoraxDeviceClient : IDeviceClient
         {
             throw new IOException("The device is not connected and authenticated.");
         }
+    }
+
+    private void EnsureAllowed(DeviceAction action, SafetyDecision decision)
+    {
+        if (!decision.IsAllowed)
+        {
+            diagnosticLog.Write(
+                $"WRITE BLOCKED action={action} reason=\"{decision.Reason}\"");
+        }
+
+        decision.ThrowIfDenied();
     }
 
     /// <summary>
@@ -657,5 +762,19 @@ public sealed class LoraxDeviceClient : IDeviceClient
         const int maximumLength = 240;
         string oneLine = fault.Replace('\r', ' ').Replace('\n', ' ');
         return oneLine.Length <= maximumLength ? oneLine : oneLine[..maximumLength];
+    }
+
+    private static string FormatDiagnosticMetadata(string? value)
+    {
+        if (value is null)
+        {
+            return "-";
+        }
+
+        string oneLine = value
+            .Replace('\r', ' ')
+            .Replace('\n', ' ')
+            .Replace('"', '\'');
+        return $"\"{oneLine}\"";
     }
 }

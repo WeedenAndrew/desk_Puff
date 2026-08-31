@@ -9,12 +9,14 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Avalonia.Win32;
 using DeskPuff.App.ViewModels;
+using DeskPuff.Core.Diagnostics;
 
 namespace DeskPuff.App;
 
 public sealed partial class MainWindow : Window
 {
     private readonly MainViewModel viewModel;
+    private readonly IDiagnosticLog diagnosticLog;
     private bool closing;
     private ListBoxItem? pressedProfileChip;
     private Point profileDragOrigin;
@@ -38,12 +40,19 @@ public sealed partial class MainWindow : Window
     {
         AvaloniaXamlLoader.Load(this);
         viewModel = null!;
+        diagnosticLog = NullDiagnosticLog.Instance;
     }
 
     internal MainWindow(MainViewModel viewModel)
+        : this(viewModel, NullDiagnosticLog.Instance)
+    {
+    }
+
+    internal MainWindow(MainViewModel viewModel, IDiagnosticLog diagnosticLog)
     {
         AvaloniaXamlLoader.Load(this);
         this.viewModel = viewModel;
+        this.diagnosticLog = diagnosticLog;
         DataContext = viewModel;
         Opened += WindowOpened;
         Closing += WindowClosing;
@@ -236,6 +245,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            diagnosticLog.WriteException("Initialize main window", exception);
             await ShowInitializationErrorAsync(exception.Message);
         }
     }

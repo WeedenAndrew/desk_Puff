@@ -81,10 +81,18 @@ The published `desk_Puff.exe` is self-contained for 64-bit Windows 10/11.
 
 ```powershell
 .\desk_Puff.exe --demo
+.\desk_Puff.exe --trace-writes
 ```
 
 `--demo` exercises the whole interface without opening Bluetooth or addressing
 hardware. It never connects to an account or cloud service.
+
+`--trace-writes` connects to hardware and performs reads normally, but any write
+that passes the existing safety policy is fully constructed, logged, and then
+discarded before transmission. It never enables a blocked write. This lets the
+interface and exact outgoing Lorax frames be inspected without changing device
+state. Each run writes a UTF-8 diagnostic log beside the executable as
+`desk_Puff-<yyyyMMdd-HHmmss>.log`; serial numbers are never included.
 
 ## Build and test
 

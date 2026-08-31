@@ -51,7 +51,7 @@ public sealed class LoraxProtocolTests
         LoraxReply reply = LoraxProtocol.ParseReply(new byte[] { 0x34, 0x12, 0x07, 0xAA });
 
         Assert.AreEqual((ushort)0x1234, reply.Sequence);
-        Assert.AreEqual((byte)0x07, reply.HeaderByte);
+        Assert.AreEqual((byte)0x07, reply.Status);
         CollectionAssert.AreEqual(new byte[] { 0xAA }, reply.Payload.ToArray());
     }
 

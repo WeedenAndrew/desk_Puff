@@ -8,32 +8,34 @@ internal sealed class DemoDeviceClient : IDeviceClient, ISessionOverrideClient
     [
         new(0, "BLUE", 260, TimeSpan.FromSeconds(40), VaporLevel.Standard, 5, TimeSpan.FromSeconds(10), "#7B07FF")
         {
-            // A real 25-stop firmware-39 palette keeps demo and headless renders
-            // representative of the gradients the Bluetooth client now reads.
+            // Authored anchors measured on firmware 39 keep demo and headless renders
+            // representative of the display palette the Bluetooth client now resolves.
             ColorPalette =
             [
-                "#7B07FF", "#6F4FEC", "#5F8AD7", "#4CC1C7", "#2CEDB5",
-                "#07FFAB", "#07F9B6", "#07E9CE", "#07D6E6", "#07C6F8",
-                "#07BFFF", "#72B2F2", "#BC92D3", "#E667AD", "#FA358C",
-                "#FF077D", "#FF0D8B", "#FF14A9", "#FF16CC", "#FF0FEA",
-                "#FF07F7", "#F307F6", "#D707F5", "#B207F6", "#8E07FB",
+                "#7B07FF", "#07FFAB", "#07BFFF", "#FF077D", "#FF07F7",
             ],
             HasDeviceColor = true,
+            ColorwayName = "DISCO",
+            LampName = "pikaled2",
         },
         new(1, "GREEN", 271, TimeSpan.FromSeconds(45), VaporLevel.High, 5, TimeSpan.FromSeconds(10), "#6EE916")
         {
             ColorPalette = ["#6EE916", "#C6FF62"],
             HasDeviceColor = true,
+            ColorwayName = "MADE IN HEAVEN",
+            LampName = "pikaled2",
         },
         new(2, "RED", 282, TimeSpan.FromSeconds(50), VaporLevel.Max, 5, TimeSpan.FromSeconds(10), "#F80B00")
         {
             ColorPalette = ["#F80B00", "#FF7A18"],
             HasDeviceColor = true,
+            LampName = "pikaled2",
         },
         new(3, "WHITE", 293, TimeSpan.FromSeconds(55), VaporLevel.XL, 5, TimeSpan.FromSeconds(10), "#FFFFFF")
         {
             ColorPalette = ["#FFFFFF", "#B9D7FF"],
             HasDeviceColor = true,
+            LampName = "migrtn1",
         },
     ];
 

@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
@@ -5,11 +6,13 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using DeskPuff.Bluetooth.Windows.Protocol;
 using DeskPuff.Core.Devices;
+using DeskPuff.Core.Diagnostics;
 
 namespace DeskPuff.Bluetooth.Windows.Transport;
 
 internal sealed class SidecarLoraxTransport : ILoraxTransport
 {
+    private const int MaximumLoggedPayloadBytes = 256;
     private const int MaximumResponseCharacters = 64 * 1024;
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
@@ -17,12 +20,34 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
     };
 
     private readonly SemaphoreSlim rpcGate = new(1, 1);
+    private readonly IDiagnosticLog diagnosticLog;
+    private readonly bool traceWrites;
+    private readonly Func<ReadOnlyMemory<byte>, ushort, CancellationToken, Task<ReadOnlyMemory<byte>>>?
+        frameSender;
     private Process? helper;
     private StreamWriter? requestWriter;
     private StreamReader? responseReader;
     private long nextRequestId;
     private ushort nextSequence;
     private bool disposed;
+
+    internal SidecarLoraxTransport(
+        IDiagnosticLog? diagnosticLog = null,
+        bool traceWrites = false)
+    {
+        this.diagnosticLog = diagnosticLog ?? NullDiagnosticLog.Instance;
+        this.traceWrites = traceWrites;
+    }
+
+    internal SidecarLoraxTransport(
+        IDiagnosticLog diagnosticLog,
+        bool traceWrites,
+        Func<ReadOnlyMemory<byte>, ushort, CancellationToken, Task<ReadOnlyMemory<byte>>> frameSender)
+        : this(diagnosticLog, traceWrites)
+    {
+        this.frameSender = frameSender;
+        IsConnected = true;
+    }
 
     public bool IsConnected { get; private set; }
 
@@ -89,6 +114,7 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
                 InvalidDataException or
                 OperationCanceledException)
             {
+                diagnosticLog.WriteException("Sidecar disconnect", exception);
                 // A safe disconnect is best-effort and the helper is reset below on transport failure.
             }
         }
@@ -124,30 +150,58 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
 
         ushort sequence = nextSequence++;
         byte[] frame = LoraxProtocol.BuildFrame(sequence, opcode, body.Span);
-        SidecarResponse response = await SendAsync(
-            new SidecarRequest
+        LoraxOperationDetails details = DescribeOperation(opcode, body, maximumReplyLength);
+        WriteOperationRequest(opcode, details);
+        if (opcode == LoraxOpcode.WriteShort)
+        {
+            string frameHex = Convert.ToHexString(frame);
+            diagnosticLog.Write(
+                $"LORAX WRITE FRAME opcode=0x{(byte)opcode:X2} path=\"{details.Path}\" " +
+                $"offset={details.Offset} valueLength={details.Value.Length} " +
+                $"valueHex={ToHex(details.Value.Span, MaximumLoggedPayloadBytes)} " +
+                $"frameHex={frameHex}");
+            if (traceWrites)
             {
-                Operation = "runCommand",
-                FrameBase64 = Convert.ToBase64String(frame),
-                ExpectedSequence = sequence,
-            },
-            cancellationToken).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(response.FrameBase64))
-        {
-            throw new InvalidDataException("The Bluetooth helper returned no Lorax reply.");
+                diagnosticLog.Write(
+                    $"TRACE-WRITE SUPPRESSED path=\"{details.Path}\" offset={details.Offset} " +
+                    $"value={ToHex(details.Value.Span, int.MaxValue)} frameHex={frameHex}");
+                return ReadOnlyMemory<byte>.Empty;
+            }
         }
 
-        byte[] replyBytes;
-        try
+        ReadOnlyMemory<byte> replyMemory;
+        if (frameSender is not null)
         {
-            replyBytes = Convert.FromBase64String(response.FrameBase64);
+            replyMemory = await frameSender(frame, sequence, cancellationToken).ConfigureAwait(false);
         }
-        catch (FormatException exception)
+        else
         {
-            throw new InvalidDataException("The Bluetooth helper returned malformed data.", exception);
+            SidecarResponse response = await SendAsync(
+                new SidecarRequest
+                {
+                    Operation = "runCommand",
+                    FrameBase64 = Convert.ToBase64String(frame),
+                    ExpectedSequence = sequence,
+                },
+                cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(response.FrameBase64))
+            {
+                throw new InvalidDataException("The Bluetooth helper returned no Lorax reply.");
+            }
+
+            try
+            {
+                replyMemory = Convert.FromBase64String(response.FrameBase64);
+            }
+            catch (FormatException exception)
+            {
+                diagnosticLog.WriteException("Decode sidecar Lorax reply", exception);
+                throw new InvalidDataException("The Bluetooth helper returned malformed data.", exception);
+            }
         }
 
-        LoraxReply reply = LoraxProtocol.ParseReply(replyBytes);
+        LoraxReply reply = LoraxProtocol.ParseReply(replyMemory);
+        WriteOperationReply(opcode, details, reply);
         if (reply.Sequence != sequence)
         {
             throw new InvalidDataException("The Bluetooth helper returned a mismatched Lorax sequence.");
@@ -180,6 +234,7 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
         {
+            diagnosticLog.WriteException("Dispose sidecar transport", exception);
         }
         finally
         {
@@ -223,8 +278,9 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
 
             return response;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception)
         {
+            diagnosticLog.WriteException("Sidecar request canceled", exception);
             StopHelper();
             IsConnected = false;
             AdvertisedName = string.Empty;
@@ -236,6 +292,7 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
             IOException or
             JsonException)
         {
+            diagnosticLog.WriteException("Sidecar request failed", exception);
             StopHelper();
             IsConnected = false;
             AdvertisedName = string.Empty;
@@ -303,7 +360,7 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
         startInfo.ArgumentList.Add("--stdio");
         helper = Process.Start(startInfo)
             ?? throw new IOException("The platform Bluetooth helper could not be started.");
-        helper.ErrorDataReceived += static (_, _) => { };
+        helper.ErrorDataReceived += HelperErrorDataReceived;
         helper.BeginErrorReadLine();
         requestWriter = helper.StandardInput;
         responseReader = helper.StandardOutput;
@@ -324,8 +381,9 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
                     helper.Kill(entireProcessTree: true);
                 }
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException exception)
             {
+                diagnosticLog.WriteException("Stop sidecar helper", exception);
             }
 
             helper.Dispose();
@@ -340,6 +398,74 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
         {
             throw new IOException("The Lorax transport is not connected.");
         }
+    }
+
+    private void HelperErrorDataReceived(object sender, DataReceivedEventArgs eventArgs)
+    {
+        if (!string.IsNullOrEmpty(eventArgs.Data))
+        {
+            diagnosticLog.Write($"SIDECAR STDERR {eventArgs.Data}");
+        }
+    }
+
+    private void WriteOperationRequest(LoraxOpcode opcode, LoraxOperationDetails details) =>
+        diagnosticLog.Write(
+            $"LORAX REQUEST opcode=0x{(byte)opcode:X2} path=\"{details.Path}\" " +
+            $"offset={details.Offset} requestedSize={details.RequestedSize}");
+
+    private void WriteOperationReply(
+        LoraxOpcode opcode,
+        LoraxOperationDetails details,
+        LoraxReply reply) =>
+        diagnosticLog.Write(
+            $"LORAX REPLY opcode=0x{(byte)opcode:X2} path=\"{details.Path}\" " +
+            $"offset={details.Offset} requestedSize={details.RequestedSize} " +
+            $"status=0x{reply.Status:X2} payloadLength={reply.Payload.Length} " +
+            $"payloadHex={ToHex(reply.Payload.Span, MaximumLoggedPayloadBytes)}");
+
+    private static LoraxOperationDetails DescribeOperation(
+        LoraxOpcode opcode,
+        ReadOnlyMemory<byte> body,
+        int maximumReplyLength)
+    {
+        if (opcode == LoraxOpcode.ReadShort && body.Length >= 4)
+        {
+            return new LoraxOperationDetails(
+                Encoding.UTF8.GetString(body.Span[4..]),
+                BinaryPrimitives.ReadUInt16LittleEndian(body.Span),
+                BinaryPrimitives.ReadUInt16LittleEndian(body.Span[2..]),
+                ReadOnlyMemory<byte>.Empty);
+        }
+
+        if (opcode == LoraxOpcode.WriteShort && body.Length >= 4)
+        {
+            int terminator = body.Span[3..].IndexOf((byte)0);
+            if (terminator >= 0)
+            {
+                int valueOffset = 4 + terminator;
+                return new LoraxOperationDetails(
+                    Encoding.UTF8.GetString(body.Span.Slice(3, terminator)),
+                    BinaryPrimitives.ReadUInt16LittleEndian(body.Span),
+                    body.Length - valueOffset,
+                    body[valueOffset..]);
+            }
+        }
+
+        return new LoraxOperationDetails("-", 0, maximumReplyLength, ReadOnlyMemory<byte>.Empty);
+    }
+
+    private static string ToHex(ReadOnlySpan<byte> bytes, int maximumBytes)
+    {
+        if (bytes.IsEmpty)
+        {
+            return "-";
+        }
+
+        int loggedLength = Math.Min(bytes.Length, maximumBytes);
+        string hex = Convert.ToHexString(bytes[..loggedLength]);
+        return loggedLength == bytes.Length
+            ? hex
+            : $"{hex}...(+{bytes.Length - loggedLength} bytes)";
     }
 
     private static string HelperPath()
@@ -399,4 +525,10 @@ internal sealed class SidecarLoraxTransport : ILoraxTransport
 
         public short SignalStrength { get; init; }
     }
+
+    private readonly record struct LoraxOperationDetails(
+        string Path,
+        ushort Offset,
+        int RequestedSize,
+        ReadOnlyMemory<byte> Value);
 }

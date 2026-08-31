@@ -886,16 +886,9 @@
                                  Foreground="{DynamicResource MutedBrush}"
                                  TextTrimming="CharacterEllipsis"
                                  Margin="0,1,0,3" />
-                      <Border Grid.Row="2" CornerRadius="3">
-                        <Border.Background>
-                          <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                            <GradientStop Color="{Binding ColorOne}" Offset="0" />
-                            <GradientStop Color="{Binding ColorTwo}" Offset="0.34" />
-                            <GradientStop Color="{Binding ColorThree}" Offset="0.67" />
-                            <GradientStop Color="{Binding ColorFour}" Offset="1" />
-                          </LinearGradientBrush>
-                        </Border.Background>
-                      </Border>
+                      <Border Grid.Row="2"
+                              CornerRadius="3"
+                              Background="{Binding Gradient}" />
                     </Grid>
                   </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -909,9 +902,14 @@
                       HorizontalScrollBarVisibility="Disabled"
                       Margin="0,8,0,12">
           <StackPanel Margin="28,0,28,0">
-            <TextBlock Text="{Binding EditorName}"
+            <TextBlock Text="{Binding CurrentColorProfileName}"
                        FontSize="19"
                        FontWeight="SemiBold"
+                       TextTrimming="CharacterEllipsis"
+                       Margin="0,0,0,1" />
+            <TextBlock Text="{Binding ColorPageContextText}"
+                       FontSize="8"
+                       Foreground="{DynamicResource MutedBrush}"
                        TextTrimming="CharacterEllipsis"
                        Margin="0,0,0,6" />
 

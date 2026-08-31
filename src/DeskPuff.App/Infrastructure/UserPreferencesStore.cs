@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DeskPuff.Core.Diagnostics;
 
 namespace DeskPuff.App.Infrastructure;
 
@@ -67,8 +68,11 @@ internal static class UserPreferencesStore
         WriteIndented = true,
     };
 
-    public static async Task<UserPreferences> LoadAsync(CancellationToken cancellationToken)
+    public static async Task<UserPreferences> LoadAsync(
+        CancellationToken cancellationToken,
+        IDiagnosticLog? diagnostics = null)
     {
+        IDiagnosticLog diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
         string path = PreferencesPath();
         try
         {
@@ -95,14 +99,17 @@ internal static class UserPreferencesStore
             UnauthorizedAccessException or
             JsonException)
         {
+            diagnosticLog.WriteException("Load user preferences", exception);
             return new UserPreferences();
         }
     }
 
     public static async Task SaveAsync(
         UserPreferences preferences,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IDiagnosticLog? diagnostics = null)
     {
+        IDiagnosticLog diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
         string path = PreferencesPath();
         string directory = Path.GetDirectoryName(path) ??
             throw new InvalidOperationException("The preferences path has no directory.");
@@ -135,8 +142,9 @@ internal static class UserPreferencesStore
             {
                 File.Delete(temporaryPath);
             }
-            catch (IOException)
+            catch (IOException exception)
             {
+                diagnosticLog.WriteException("Delete temporary preferences", exception);
             }
         }
     }

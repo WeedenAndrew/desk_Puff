@@ -21,7 +21,7 @@ internal enum DeviceModeCommand : byte
 
 internal readonly record struct LoraxReply(
     ushort Sequence,
-    byte HeaderByte,
+    byte Status,
     ReadOnlyMemory<byte> Payload);
 
 internal static class LoraxProtocol

@@ -6,10 +6,25 @@ namespace DeskPuff.Bluetooth.Windows.Protocol;
 
 internal static class ProfileLightingCodec
 {
+    internal enum PaletteSource
+    {
+        None,
+        MetaUserColors,
+        LampParamColor,
+    }
+
+    internal sealed record DecodedLighting(
+        IReadOnlyList<string> Colors,
+        PaletteSource Source,
+        string? MoodName,
+        string? LampName);
+
     // A PEAKSHI V2 on firmware 39 returned 25 colors on 2026-08-28. Thirty-two
     // keeps the decoder bounded while leaving headroom above the observed maximum.
     private const int MaximumColorCount = 32;
-    private const int MaximumCborBytes = 512;
+    // PEAKSHI V2 firmware 39 returned 517, 466, 517, and 799-byte documents for profile
+    // slots 0-3 on 2026-08-31. 4096 remains bounded headroom above the observed maximum, 799.
+    private const int MaximumCborBytes = 4096;
 
     internal static byte[] EncodeSolid(IReadOnlyList<string> colors)
     {
@@ -46,7 +61,19 @@ internal static class ProfileLightingCodec
         return writer.WrittenSpan.ToArray();
     }
 
-    internal static IReadOnlyList<string> DecodeColors(ReadOnlySpan<byte> cbor)
+    internal static IReadOnlyList<string> DecodeColors(ReadOnlySpan<byte> cbor) =>
+        DecodeLighting(cbor).Colors;
+
+    internal static IReadOnlyList<string> DecodeColors(
+        ReadOnlySpan<byte> cbor,
+        out PaletteSource source)
+    {
+        DecodedLighting decoded = DecodeLighting(cbor);
+        source = decoded.Source;
+        return decoded.Colors;
+    }
+
+    internal static DecodedLighting DecodeLighting(ReadOnlySpan<byte> cbor)
     {
         if (cbor.Length is < 1 or > MaximumCborBytes)
         {
@@ -56,20 +83,25 @@ internal static class ProfileLightingCodec
         CborReader reader = new(cbor.ToArray());
         object? root = reader.ReadValue(depth: 0);
         if (!reader.IsComplete ||
-            root is not Dictionary<string, object?> rootMap ||
-            !rootMap.TryGetValue("lamp", out object? lampValue) ||
-            lampValue is not Dictionary<string, object?> lamp ||
-            !lamp.TryGetValue("param", out object? parameterValue) ||
-            parameterValue is not Dictionary<string, object?> parameters)
+            root is not Dictionary<string, object?> rootMap)
         {
             throw new InvalidDataException("Profile lighting CBOR does not contain a bounded RGB color array.");
         }
 
-        if (!parameters.TryGetValue("color", out object? colorValue))
+        string? moodName = ReadOptionalString(rootMap, "meta", "moodName");
+        string? lampName = ReadOptionalString(rootMap, "lamp", "name");
+        if (TryDecodeUserColors(rootMap, out IReadOnlyList<string> userColors))
         {
-            return parameters.ContainsKey("paths")
-                ? []
-                : throw new InvalidDataException("Profile lighting CBOR does not contain a bounded RGB color array.");
+            return new DecodedLighting(
+                userColors,
+                PaletteSource.MetaUserColors,
+                moodName,
+                lampName);
+        }
+
+        if (!TryGetInterpolatedColor(rootMap, out object? colorValue))
+        {
+            return new DecodedLighting([], PaletteSource.None, moodName, lampName);
         }
 
         if (colorValue is not byte[] rgb ||
@@ -86,7 +118,83 @@ internal static class ProfileLightingCodec
             colors[index] = $"#{rgb[index * 3]:X2}{rgb[(index * 3) + 1]:X2}{rgb[(index * 3) + 2]:X2}";
         }
 
-        return colors;
+        return new DecodedLighting(
+            colors,
+            PaletteSource.LampParamColor,
+            moodName,
+            lampName);
+    }
+
+    private static string? ReadOptionalString(
+        Dictionary<string, object?> root,
+        string containerKey,
+        string valueKey) =>
+        root.TryGetValue(containerKey, out object? containerValue) &&
+        containerValue is Dictionary<string, object?> container &&
+        container.TryGetValue(valueKey, out object? value) &&
+        value is string text &&
+        text.Length > 0
+            ? text
+            : null;
+
+    private static bool TryDecodeUserColors(
+        Dictionary<string, object?> root,
+        out IReadOnlyList<string> colors)
+    {
+        colors = [];
+        if (!root.TryGetValue("meta", out object? metaValue) ||
+            metaValue is not Dictionary<string, object?> metadata ||
+            !metadata.TryGetValue("userColors", out object? userColorsValue) ||
+            userColorsValue is not List<object?> userColors ||
+            userColors.Count == 0)
+        {
+            return false;
+        }
+
+        string[] normalized = new string[userColors.Count];
+        for (int index = 0; index < userColors.Count; index++)
+        {
+            if (!TryNormalizeColor(userColors[index], out normalized[index]))
+            {
+                return false;
+            }
+        }
+
+        colors = normalized;
+        return true;
+    }
+
+    private static bool TryGetInterpolatedColor(
+        Dictionary<string, object?> root,
+        out object? colorValue)
+    {
+        colorValue = null;
+        return root.TryGetValue("lamp", out object? lampValue) &&
+            lampValue is Dictionary<string, object?> lamp &&
+            lamp.TryGetValue("param", out object? parameterValue) &&
+            parameterValue is Dictionary<string, object?> parameters &&
+            parameters.TryGetValue("color", out colorValue);
+    }
+
+    private static bool TryNormalizeColor(object? value, out string normalized)
+    {
+        normalized = string.Empty;
+        if (value is not string color ||
+            color.Length != 7 ||
+            color[0] != '#' ||
+            !uint.TryParse(
+                color.AsSpan(1),
+                NumberStyles.HexNumber,
+                CultureInfo.InvariantCulture,
+                out _))
+        {
+            return false;
+        }
+
+        // Device metadata is lowercase while app palettes are uppercase; normalize so
+        // visually identical device and local colors also compare equal.
+        normalized = color.ToUpperInvariant();
+        return true;
     }
 
     private static void WriteText(IBufferWriter<byte> writer, string value)
@@ -154,7 +262,9 @@ internal static class ProfileLightingCodec
             24 => ReadUnsigned(1),
             25 => ReadUnsigned(2),
             26 => ReadUnsigned(4),
-            _ => throw new InvalidDataException("Indefinite or oversized CBOR values are not accepted."),
+            27 => ReadUnsigned(8),
+            31 => throw new InvalidDataException("Indefinite-length CBOR values are not accepted."),
+            _ => throw new InvalidDataException("CBOR uses a reserved additional-information value."),
         };
 
         private ulong ReadUnsigned(int length)
@@ -210,6 +320,8 @@ internal static class ProfileLightingCodec
             20 => false,
             21 => true,
             22 => null,
+            // ReadArgument has already consumed the 2-, 4-, or 8-byte floating-point payload.
+            25 or 26 or 27 => argument,
             _ => argument,
         };
 

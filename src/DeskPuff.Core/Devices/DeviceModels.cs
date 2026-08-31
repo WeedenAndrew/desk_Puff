@@ -106,6 +106,10 @@ public sealed record HeatProfile(
     public IReadOnlyList<string> ColorPalette { get; init; } = [ColorHex];
 
     public bool HasDeviceColor { get; init; }
+
+    public string? ColorwayName { get; init; }
+
+    public string? LampName { get; init; }
 }
 
 public sealed record DeviceSnapshot(

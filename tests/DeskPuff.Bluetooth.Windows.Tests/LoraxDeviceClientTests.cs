@@ -3,6 +3,7 @@ using System.Text;
 using DeskPuff.Bluetooth.Windows.Protocol;
 using DeskPuff.Bluetooth.Windows.Transport;
 using DeskPuff.Core.Devices;
+using DeskPuff.Core.Diagnostics;
 using DeskPuff.Core.Safety;
 
 namespace DeskPuff.Bluetooth.Windows.Tests;
@@ -12,8 +13,11 @@ public sealed class LoraxDeviceClientTests
 {
     private const string FirstDeviceColorBytes =
         "7B07FF6F4FEC5F8AD74CC1C72CEDB507FFAB07F9B607E9CE07D6E607C6F807BFFF72B2F2BC92D3E667ADFA358CFF077DFF0D8BFF14A9FF16CCFF0FEAFF07F7F307F6D707F5B207F68E07FB";
-    private static readonly string[] FirstDevicePalette = DecodeExpectedColors(FirstDeviceColorBytes);
-    private static readonly byte[] FirstDeviceLighting = BuildCompletePikaledFixture(FirstDeviceColorBytes);
+    private static readonly string[] FirstDevicePalette =
+        ["#7B07FF", "#07FFAB", "#07BFFF", "#FF077D", "#FF07F7"];
+    private static readonly byte[] FirstDeviceLighting = BuildCompletePikaledFixtureWithUserColors(
+        FirstDeviceColorBytes,
+        ["#7b07ff", "#07ffab", "#07bfff", "#ff077d", "#ff07f7"]);
     private static readonly string[] FourthProfileFallback = ["#FFFFFF"];
     private static readonly string[] ProfilePrimaryColors = ["#102030", "#202030", "#302030", "#402030"];
     private static readonly byte[] MigrationPathLighting = Convert.FromHexString(
@@ -88,7 +92,11 @@ public sealed class LoraxDeviceClientTests
     public async Task Start_UnverifiedFirmwareNeverReachesTransportWrite()
     {
         FakeLoraxTransport transport = new();
-        await using LoraxDeviceClient client = new(transport);
+        RecordingDiagnosticLog diagnosticLog = new();
+        await using LoraxDeviceClient client = new(
+            transport,
+            diagnosticLog,
+            traceWrites: true);
         await client.ConnectAsync(
             new DeviceCandidate("test-peak", "PUFFCO PEAK", -40),
             CancellationToken.None);
@@ -97,6 +105,10 @@ public sealed class LoraxDeviceClientTests
             client.StartSessionAsync(CancellationToken.None));
 
         Assert.AreEqual(0, transport.WriteCount);
+        StringAssert.Contains(
+            diagnosticLog.Text,
+            "WRITE BLOCKED action=StartSession",
+            "Trace mode must not bypass or hide an existing policy denial.");
     }
 
     [TestMethod]
@@ -120,10 +132,11 @@ public sealed class LoraxDeviceClientTests
     }
 
     [TestMethod]
-    public async Task Profiles_UseColorsReadFromDeviceLightingCbor()
+    public async Task Profiles_UseAuthoredColorsAndLogPaletteSource()
     {
         FakeLoraxTransport transport = new();
-        await using LoraxDeviceClient client = new(transport);
+        RecordingDiagnosticLog diagnosticLog = new();
+        await using LoraxDeviceClient client = new(transport, diagnosticLog);
         await client.ConnectAsync(
             new DeviceCandidate("test-peak", "PUFFCO PEAK", -40),
             CancellationToken.None);
@@ -132,10 +145,20 @@ public sealed class LoraxDeviceClientTests
 
         Assert.HasCount(4, profiles);
         Assert.IsTrue(profiles.All(profile => profile.HasDeviceColor));
-        Assert.HasCount(25, profiles[0].ColorPalette);
+        Assert.HasCount(5, profiles[0].ColorPalette);
         CollectionAssert.AreEqual(
             FirstDevicePalette,
             profiles[0].ColorPalette.ToArray());
+        Assert.AreEqual("DISCO", profiles[0].ColorwayName);
+        Assert.AreEqual("pikaled2", profiles[0].LampName);
+        StringAssert.Contains(
+            diagnosticLog.Text,
+            "PROFILE PALETTE index=0 source=meta.userColors colorCount=5 " +
+            "moodName=\"DISCO\" lampName=\"pikaled2\"");
+        Assert.AreEqual(
+            4,
+            diagnosticLog.Text.Split("PROFILE PALETTE index=", StringSplitOptions.None).Length - 1,
+            "Each profile read must produce exactly one palette-source diagnostic line.");
         Assert.IsTrue(transport.ReadPaths.Contains(LoraxPaths.ProfileColor(0), StringComparer.Ordinal));
     }
 
@@ -314,19 +337,44 @@ public sealed class LoraxDeviceClientTests
         }
     }
 
-    private static byte[] BuildCompletePikaledFixture(string colorBytesHex)
+    private sealed class RecordingDiagnosticLog : IDiagnosticLog
     {
-        byte[] header = Convert.FromHexString(
-            "A1646C616D70A2646E616D656870696B616C65643265706172616DA165636F6C6F7258");
-        byte[] colorBytes = Convert.FromHexString(colorBytesHex);
-        return [.. header, checked((byte)colorBytes.Length), .. colorBytes];
+        private readonly StringBuilder text = new();
+
+        internal string Text => text.ToString();
+
+        public void Write(string message) => text.AppendLine(message);
+
+        public void WriteException(string context, Exception exception) =>
+            text.Append(context)
+                .Append(": ")
+                .Append(exception.GetType().Name)
+                .Append(": ")
+                .AppendLine(exception.Message);
     }
 
-    private static string[] DecodeExpectedColors(string colorBytesHex)
+    private static byte[] BuildCompletePikaledFixtureWithUserColors(
+        string colorBytesHex,
+        string[] userColors)
     {
-        byte[] bytes = Convert.FromHexString(colorBytesHex);
-        return Enumerable.Range(0, bytes.Length / 3)
-            .Select(index => $"#{bytes[index * 3]:X2}{bytes[(index * 3) + 1]:X2}{bytes[(index * 3) + 2]:X2}")
-            .ToArray();
+        byte[] header = Convert.FromHexString(
+            "A2646C616D70A2646E616D656870696B616C65643265706172616DA165636F6C6F7258");
+        byte[] colorBytes = Convert.FromHexString(colorBytesHex);
+        byte[] metadataHeader = Convert.FromHexString(
+            "646D657461A2686D6F6F644E616D6565444953434F6A75736572436F6C6F7273");
+        List<byte> fixture = new(header.Length + colorBytes.Length + metadataHeader.Length + 64);
+        fixture.AddRange(header);
+        fixture.Add(checked((byte)colorBytes.Length));
+        fixture.AddRange(colorBytes);
+        fixture.AddRange(metadataHeader);
+        fixture.Add((byte)(0x80 | userColors.Length));
+        foreach (string color in userColors)
+        {
+            byte[] encoded = Encoding.UTF8.GetBytes(color);
+            fixture.Add((byte)(0x60 | encoded.Length));
+            fixture.AddRange(encoded);
+        }
+
+        return fixture.ToArray();
     }
 }

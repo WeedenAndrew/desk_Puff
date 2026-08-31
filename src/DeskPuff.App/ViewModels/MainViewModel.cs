@@ -12,6 +12,7 @@ using Avalonia.Threading;
 using DeskPuff.App.Devices;
 using DeskPuff.App.Infrastructure;
 using DeskPuff.Core.Devices;
+using DeskPuff.Core.Diagnostics;
 using DeskPuff.Core.Profiles;
 using DeskPuff.Core.Safety;
 using DeskPuff.Core.Sessions;
@@ -30,6 +31,13 @@ internal sealed record ShortcutOption(Key? Value, string Label);
 
 internal static class PalettePresentation
 {
+    // Thirty-three stops create 32 short display intervals. That is dense enough for
+    // continuous hue motion while keeping every profile-chip brush small and cheap.
+    private const int DisplayStopCount = 33;
+    private const int DisplayIntervalCount = DisplayStopCount - 1;
+
+    private readonly record struct Oklch(double Lightness, double Chroma, double Hue);
+
     public static string ContrastForeground(IReadOnlyList<string> colors)
     {
         int totalBrightness = 0;
@@ -89,11 +97,12 @@ internal static class PalettePresentation
             return brush;
         }
 
-        for (int index = 0; index < colors.Count; index++)
+        for (int index = 0; index < DisplayStopCount; index++)
         {
+            double position = (double)index / DisplayIntervalCount;
             brush.GradientStops.Add(new GradientStop(
-                ToColor(colors[index]),
-                (double)index / (colors.Count - 1)));
+                ColorOnOpenSweep(colors, position),
+                position));
         }
 
         return brush;
@@ -130,22 +139,31 @@ internal static class PalettePresentation
             return brush;
         }
 
-        double segmentStart = segment / 4d;
-        double segmentEnd = (segment + 1) / 4d;
-        brush.GradientStops.Add(new GradientStop(ColorOnClosedSweep(colors, segmentStart), 0));
-        for (int index = 1; index < colors.Count; index++)
+        const int intervalsPerSegment = DisplayIntervalCount / 4;
+        for (int index = 0; index <= intervalsPerSegment; index++)
         {
-            double position = (double)index / colors.Count;
-            if (position > segmentStart && position < segmentEnd)
-            {
-                brush.GradientStops.Add(new GradientStop(
-                    ToColor(colors[index]),
-                    (position - segmentStart) * 4));
-            }
+            double closedPosition = ((segment * intervalsPerSegment) + index) /
+                (double)DisplayIntervalCount;
+            brush.GradientStops.Add(new GradientStop(
+                ColorOnClosedSweep(colors, closedPosition),
+                (double)index / intervalsPerSegment));
         }
 
-        brush.GradientStops.Add(new GradientStop(ColorOnClosedSweep(colors, segmentEnd), 1));
         return brush;
+    }
+
+    private static Color ColorOnOpenSweep(IReadOnlyList<string> colors, double position)
+    {
+        if (position >= 1)
+        {
+            return ToColor(colors[^1]);
+        }
+
+        double scaled = Math.Clamp(position, 0, 1) * (colors.Count - 1);
+        int fromIndex = Math.Min((int)Math.Floor(scaled), colors.Count - 1);
+        int toIndex = Math.Min(fromIndex + 1, colors.Count - 1);
+        double amount = scaled - Math.Floor(scaled);
+        return InterpolateOklch(ToColor(colors[fromIndex]), ToColor(colors[toIndex]), amount);
     }
 
     private static Color ColorOnClosedSweep(IReadOnlyList<string> colors, double position)
@@ -159,16 +177,78 @@ internal static class PalettePresentation
         int fromIndex = Math.Min((int)Math.Floor(scaled), colors.Count - 1);
         int toIndex = (fromIndex + 1) % colors.Count;
         double amount = scaled - Math.Floor(scaled);
-        Color from = ToColor(colors[fromIndex]);
-        Color to = ToColor(colors[toIndex]);
-        return Color.FromRgb(
-            Interpolate(from.R, to.R, amount),
-            Interpolate(from.G, to.G, amount),
-            Interpolate(from.B, to.B, amount));
+        return InterpolateOklch(ToColor(colors[fromIndex]), ToColor(colors[toIndex]), amount);
     }
 
-    private static byte Interpolate(byte from, byte to, double amount) =>
-        (byte)Math.Round(from + ((to - from) * amount));
+    private static Color InterpolateOklch(Color from, Color to, double amount)
+    {
+        Oklch first = ToOklch(from);
+        Oklch second = ToOklch(to);
+        double firstHue = first.Chroma < 0.000001 ? second.Hue : first.Hue;
+        double secondHue = second.Chroma < 0.000001 ? firstHue : second.Hue;
+        double hueDelta = secondHue - firstHue;
+        if (hueDelta > Math.PI)
+        {
+            hueDelta -= Math.Tau;
+        }
+        else if (hueDelta < -Math.PI)
+        {
+            hueDelta += Math.Tau;
+        }
+
+        double clampedAmount = Math.Clamp(amount, 0, 1);
+        return FromOklch(new Oklch(
+            first.Lightness + ((second.Lightness - first.Lightness) * clampedAmount),
+            first.Chroma + ((second.Chroma - first.Chroma) * clampedAmount),
+            firstHue + (hueDelta * clampedAmount)));
+    }
+
+    private static Oklch ToOklch(Color color)
+    {
+        double red = SrgbToLinear(color.R);
+        double green = SrgbToLinear(color.G);
+        double blue = SrgbToLinear(color.B);
+        double lRoot = Math.Cbrt((0.4122214708 * red) + (0.5363325363 * green) + (0.0514459929 * blue));
+        double mRoot = Math.Cbrt((0.2119034982 * red) + (0.6806995451 * green) + (0.1073969566 * blue));
+        double sRoot = Math.Cbrt((0.0883024619 * red) + (0.2817188376 * green) + (0.6299787005 * blue));
+        double lightness = (0.2104542553 * lRoot) + (0.7936177850 * mRoot) - (0.0040720468 * sRoot);
+        double a = (1.9779984951 * lRoot) - (2.4285922050 * mRoot) + (0.4505937099 * sRoot);
+        double b = (0.0259040371 * lRoot) + (0.7827717662 * mRoot) - (0.8086757660 * sRoot);
+        return new Oklch(lightness, Math.Sqrt((a * a) + (b * b)), Math.Atan2(b, a));
+    }
+
+    private static Color FromOklch(Oklch color)
+    {
+        double a = color.Chroma * Math.Cos(color.Hue);
+        double b = color.Chroma * Math.Sin(color.Hue);
+        double lRoot = color.Lightness + (0.3963377774 * a) + (0.2158037573 * b);
+        double mRoot = color.Lightness - (0.1055613458 * a) - (0.0638541728 * b);
+        double sRoot = color.Lightness - (0.0894841775 * a) - (1.2914855480 * b);
+        double l = lRoot * lRoot * lRoot;
+        double m = mRoot * mRoot * mRoot;
+        double s = sRoot * sRoot * sRoot;
+        return Color.FromRgb(
+            LinearToSrgb((4.0767416621 * l) - (3.3077115913 * m) + (0.2309699292 * s)),
+            LinearToSrgb((-1.2684380046 * l) + (2.6097574011 * m) - (0.3413193965 * s)),
+            LinearToSrgb((-0.0041960863 * l) - (0.7034186147 * m) + (1.7076147010 * s)));
+    }
+
+    private static double SrgbToLinear(byte channel)
+    {
+        double value = channel / 255d;
+        return value <= 0.04045
+            ? value / 12.92
+            : Math.Pow((value + 0.055) / 1.055, 2.4);
+    }
+
+    private static byte LinearToSrgb(double channel)
+    {
+        double value = Math.Clamp(channel, 0, 1);
+        double encoded = value <= 0.0031308
+            ? value * 12.92
+            : (1.055 * Math.Pow(value, 1 / 2.4)) - 0.055;
+        return (byte)Math.Round(encoded * byte.MaxValue);
+    }
 }
 
 internal sealed record ColorPaletteOption(
@@ -211,23 +291,7 @@ internal sealed record HeatingProfileOption(
 {
     public string DetailText => $"{DeviceProfileName} • {ColorProfileName}";
 
-    public string ColorOne => Colors[0];
-
-    public string ColorTwo => ColorAt(1);
-
-    public string ColorThree => ColorAt(2);
-
-    public string ColorFour => ColorAt(3);
-
-    public bool ColorTwoVisibility => ColorVisibilityAt(1);
-
-    public bool ColorThreeVisibility => ColorVisibilityAt(2);
-
-    public bool ColorFourVisibility => ColorVisibilityAt(3);
-
-    private string ColorAt(int index) => index < Colors.Count ? Colors[index] : Colors[^1];
-
-    private bool ColorVisibilityAt(int index) => index < Colors.Count;
+    public LinearGradientBrush Gradient => PalettePresentation.Sweep(Colors);
 }
 
 internal enum ProfileSource
@@ -330,6 +394,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     ];
 
     private readonly SessionController controller;
+    private readonly IDiagnosticLog diagnosticLog;
     private readonly ISessionOverrideClient? sessionOverrides;
     private readonly LocalProfileLibrary profileLibrary;
     private readonly bool demoMode;
@@ -380,14 +445,18 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         SessionController controller,
         bool demoMode,
         string? profileLibraryRoot = null,
-        ISessionOverrideClient? sessionOverrides = null)
+        ISessionOverrideClient? sessionOverrides = null,
+        IDiagnosticLog? diagnostics = null)
     {
         this.controller = controller;
+        diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
         this.sessionOverrides = sessionOverrides;
         this.demoMode = demoMode;
-        profileLibrary = new LocalProfileLibrary(profileLibraryRoot ?? (demoMode
-            ? Path.Combine(Path.GetTempPath(), "desk_Puff", "demo-profiles")
-            : LocalProfileLibrary.DefaultRootPath()));
+        profileLibrary = new LocalProfileLibrary(
+            profileLibraryRoot ?? (demoMode
+                ? Path.Combine(Path.GetTempPath(), "desk_Puff", "demo-profiles")
+                : LocalProfileLibrary.DefaultRootPath()),
+            diagnosticLog);
         snapshot = controller.Snapshot;
         controller.SnapshotChanged += ControllerSnapshotChanged;
         SavedHeatingProfiles.CollectionChanged += (_, _) => RebuildSelectableProfiles();
@@ -688,9 +757,14 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         set
         {
             string previousName = editorName;
-            if (SetProperty(ref editorName, value) &&
-                (string.IsNullOrWhiteSpace(HeatingProfileName) ||
-                 string.Equals(HeatingProfileName, previousName, StringComparison.Ordinal)))
+            if (!SetProperty(ref editorName, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(ColorPageContextText));
+            if (string.IsNullOrWhiteSpace(HeatingProfileName) ||
+                string.Equals(HeatingProfileName, previousName, StringComparison.Ordinal))
             {
                 HeatingProfileName = value;
             }
@@ -1182,9 +1256,33 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
-    public string CurrentColorProfileName => SavedColorPalettes.FirstOrDefault(
-        palette => ColorsMatch(palette.Colors, EditorPaletteColors()))?.Name.ToUpperInvariant() ??
-        "CUSTOM COLORWAY";
+    public string CurrentColorProfileName
+    {
+        get
+        {
+            HeatProfile? deviceColorway = EditorDeviceColorway();
+            if (deviceColorway?.ColorwayName is { Length: > 0 } colorwayName)
+            {
+                return colorwayName;
+            }
+
+            return SavedColorPalettes.FirstOrDefault(
+                palette => ColorsMatch(palette.Colors, editorColors))?.Name.ToUpperInvariant() ??
+                "CUSTOM COLORWAY";
+        }
+    }
+
+    public string ColorPageContextText
+    {
+        get
+        {
+            string profileName = EditorName.Trim().ToUpperInvariant();
+            HeatProfile? deviceColorway = EditorDeviceColorway();
+            return deviceColorway?.LampName is { Length: > 0 } lampName
+                ? $"HEAT PROFILE • {profileName}   LAMP • {lampName}"
+                : $"HEAT PROFILE • {profileName}";
+        }
+    }
 
     public string StealthButtonText => stealthEnabled ? "TURN STEALTH OFF" : "TURN STEALTH ON";
 
@@ -1293,7 +1391,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         AsyncRelayCommand command = new(
             cancellationToken => RunUserOperationAsync(operation, cancellationToken),
             ShowError,
-            () => !userOperationBusy && (canExecute?.Invoke() ?? true));
+            () => !userOperationBusy && (canExecute?.Invoke() ?? true),
+            diagnosticLog);
         asyncCommands.Add(command);
         return command;
     }
@@ -1387,8 +1486,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 ? "Handoff complete • control enabled"
                 : "Handoff complete • read-only safety mode";
         }
-        catch
+        catch (Exception exception)
         {
+            diagnosticLog.WriteException("Hot-swap device", exception);
             try
             {
                 await controller.DisconnectAsync(CancellationToken.None);
@@ -1620,7 +1720,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task LoadPreferencesAsync(CancellationToken cancellationToken)
     {
-        UserPreferences preferences = await UserPreferencesStore.LoadAsync(cancellationToken);
+        UserPreferences preferences = await UserPreferencesStore.LoadAsync(
+            cancellationToken,
+            diagnosticLog);
         string savedAccentHex = preferences.AppAccentHex?.Trim() ?? string.Empty;
         string normalizedAccentHex = savedAccentHex.ToUpperInvariant();
         appAccentHex = IsHexColor(normalizedAccentHex) &&
@@ -1730,8 +1832,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                         existingFileName: null,
                         cancellationToken);
                 }
-                catch (InvalidDataException)
+                catch (InvalidDataException exception)
                 {
+                    diagnosticLog.WriteException("Migrate legacy color profile", exception);
                 }
             }
 
@@ -1788,8 +1891,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                         existingFileName: null,
                         cancellationToken);
                 }
-                catch (InvalidDataException)
+                catch (InvalidDataException exception)
                 {
+                    diagnosticLog.WriteException("Migrate legacy heating profile", exception);
                 }
             }
 
@@ -1923,7 +2027,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             QuickHitTimeSeconds = QuickHitTimeSeconds,
             ProfileMacros = profileMacros.ToDictionary(item => item.Key, item => item.Value.ToString()),
         };
-        await UserPreferencesStore.SaveAsync(preferences, cancellationToken);
+        await UserPreferencesStore.SaveAsync(preferences, cancellationToken, diagnosticLog);
         StatusText = "Appearance, controls, and macros saved";
     }
 
@@ -2276,8 +2380,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             await pollingTask;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception)
         {
+            diagnosticLog.WriteException("Stop telemetry polling", exception);
         }
 
         pollingCancellation.Dispose();
@@ -2296,12 +2401,14 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 await controller.RefreshAsync(cancellationToken);
                 consecutiveFailures = 0;
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
             {
+                diagnosticLog.WriteException("Cancel telemetry polling", exception);
                 return;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                diagnosticLog.WriteException("Refresh device telemetry", exception);
                 consecutiveFailures++;
                 if (consecutiveFailures < MaximumConsecutiveRefreshFailures)
                 {
@@ -2366,6 +2473,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void ShowError(Exception exception)
     {
+        diagnosticLog.WriteException("Display operation error", exception);
         // AggregateException.Message reads "One or more errors occurred. (...)",
         // which buries the real text. Flatten it so each distinct failure is
         // shown on its own instead.
@@ -2463,6 +2571,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(ProfileArcTwo));
         OnPropertyChanged(nameof(ProfileArcThree));
         OnPropertyChanged(nameof(ProfileArcFour));
+        OnPropertyChanged(nameof(CurrentColorProfileName));
+        OnPropertyChanged(nameof(ColorPageContextText));
     }
 
     private void NotifyProfileCarouselProperties()
@@ -2526,6 +2636,17 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         return profile?.ColorPalette is { Count: > 0 } colors
             ? colors
             : [ActiveProfileColor];
+    }
+
+    private HeatProfile? EditorDeviceColorway()
+    {
+        HeatProfile? profile = profiles.FirstOrDefault(
+            item => item.Index == snapshot.ActiveProfileIndex);
+        return profile is not null &&
+            profile.ColorPalette.Count > 0 &&
+            ColorsMatch(profile.ColorPalette, editorColors)
+                ? profile
+                : null;
     }
 
     private string ProfileColorAt(int slot)
@@ -2689,6 +2810,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(WheelColor));
         OnPropertyChanged(nameof(ColorStopPositionText));
         OnPropertyChanged(nameof(CurrentColorProfileName));
+        OnPropertyChanged(nameof(ColorPageContextText));
         OnPropertyChanged(nameof(EditorPaletteForegroundDisplay));
         NotifyCommandStates();
     }
