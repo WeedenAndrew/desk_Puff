@@ -1,14 +1,17 @@
 # desk_Puff
 
+[![CI](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/ci.yml/badge.svg)](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/ci.yml)
+
 A compact Bluetooth controller for app-enabled Puffco e-rigs, in a small desktop
 window. No accounts, advertising, location tracking, social features, or cloud
 services.
 
 > [!WARNING]
-> Early, independent, and not affiliated with Puff Corp. Live device writes stay
-> gated until an exact device and firmware combination has passed the hardware
-> safety suite. Use the physical device button if software state is ever
-> uncertain.
+> Early, independent, and not affiliated with Puff Corp. Live device writes are
+> gated on an allowlist of exact model and firmware pairs, each with recorded
+> operating limits. **One entry exists — the author's own device.** Everything
+> else connects read-only and says so. Use the physical device button if
+> software state is ever uncertain.
 
 ![desk_Puff home screen](docs/media/home.png)
 

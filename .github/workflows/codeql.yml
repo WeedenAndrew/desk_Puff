@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
   security-events: write
+  # The analyze step reports its status through
+  # GET /repos/{owner}/{repo}/actions/runs/{run_id}, which needs this. Without
+  # it the scan completes, writes its SARIF, and then fails the job with
+  # "Resource not accessible by integration" — a green analysis behind a red run.
+  actions: read
 
 jobs:
   analyze:
