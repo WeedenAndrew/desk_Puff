@@ -1,6 +1,7 @@
 # desk_Puff
 
 [![CI](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/ci.yml/badge.svg)](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/codeql.yml/badge.svg)](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/codeql.yml)
 
 A compact Bluetooth controller for app-enabled Puffco e-rigs, in a small desktop
 window. No accounts, advertising, location tracking, social features, or cloud
