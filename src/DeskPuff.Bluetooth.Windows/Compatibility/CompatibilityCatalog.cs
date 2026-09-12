@@ -38,10 +38,33 @@ internal static class CompatibilityCatalog
         ];
 
     // These limits were stated by the device's owner from the Puffco app interface
-    // on 2026-08-31. They are NOT read from the device. Lorax GetLimits (0x02)
-    // returned 125, 40, and 8 as u16 values, which do not describe these thermal
-    // limits, so their wire location remains unknown. The +15 F boost value is a
-    // temperature delta, not an absolute temperature ceiling.
+    // on 2026-08-31. They are NOT read from the device. The +15 F boost value is a
+    // temperature delta, not an absolute temperature ceiling: a 480 F profile
+    // boosts to 495 F and no further.
+    //
+    // The two boost ceilings are no longer only owner-stated. Both were reached
+    // and held on hardware on 2026-09-12, confirmed by read-back:
+    // MaximumBoostTemperatureCelsius at 8.333333 (tmpo = 55550541, clamped from a
+    // larger request) and MaximumBoostDuration at 30 s (timo = 0000F041). See
+    // docs/compatibility/peak-pro-13-AN.md. The 30 s figure was validated on a
+    // 90 s profile only; on a 120 s profile MaximumDuration refuses the first
+    // time boost, so the boost ceiling is unreachable there.
+    //
+    // MaximumTemperatureCelsius stays at 600 F. The owner raised 580 F as the
+    // hardware ceiling on 2026-09-12, reviewed it, and retained 600. Recorded
+    // because the two figures were once in conflict; if 580 is ever substantiated
+    // this value is 20 F too permissive, which is an error in the unsafe
+    // direction. No profile has been written above 500 F on hardware.
+    //
+    // Whether +15 F is the device's own boost ceiling or only the phone app's is
+    // still unknown; the firmware clamps tmpo itself, so the two have never been
+    // distinguished.
+    //
+    // Lorax GetLimits (0x02) returns 125, 40, and 8 as u16 values. 125 is now
+    // accounted for: it is the maximum read payload, measured, with 126 rejected
+    // by status 0x7A and 125 and 124 accepted. 40 and 8 remain unidentified. 40 is
+    // ruled out as a path-length limit and is suspected to be a maximum WRITE
+    // payload, which would matter because lighting writes are chunked at 80.
     //
     // Device reads corroborate the owner-stated envelope without establishing it:
     // profile temperatures were 450, 420, 500, and 480 F; durations were 90 and

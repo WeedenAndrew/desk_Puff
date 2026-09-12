@@ -80,7 +80,7 @@ internal static class ProfileLightingCodec
             throw new InvalidDataException("Profile lighting CBOR is empty or exceeds its bounded size.");
         }
 
-        CborReader reader = new(cbor.ToArray());
+        CborReader reader = new(cbor);
         object? root = reader.ReadValue(depth: 0);
         if (!reader.IsComplete ||
             root is not Dictionary<string, object?> rootMap)
@@ -224,118 +224,4 @@ internal static class ProfileLightingCodec
         writer.Advance(2);
     }
 
-    private sealed class CborReader(byte[] bytes)
-    {
-        private const int MaximumDepth = 8;
-        private const int MaximumCollectionItems = 32;
-        private int offset;
-
-        internal bool IsComplete => offset == bytes.Length;
-
-        internal object? ReadValue(int depth)
-        {
-            if (depth > MaximumDepth || offset >= bytes.Length)
-            {
-                throw new InvalidDataException("Profile lighting CBOR is truncated or too deeply nested.");
-            }
-
-            byte initial = bytes[offset++];
-            int majorType = initial >> 5;
-            ulong argument = ReadArgument(initial & 0x1F);
-            return majorType switch
-            {
-                0 => argument,
-                1 => checked(-1L - (long)argument),
-                2 => ReadBytes(argument),
-                3 => Encoding.UTF8.GetString(ReadBytes(argument)),
-                4 => ReadArray(argument, depth + 1),
-                5 => ReadMap(argument, depth + 1),
-                6 => ReadValue(depth + 1),
-                7 => ReadSimple(initial & 0x1F, argument),
-                _ => throw new InvalidDataException("Profile lighting CBOR uses an unsupported major type."),
-            };
-        }
-
-        private ulong ReadArgument(int additionalInformation) => additionalInformation switch
-        {
-            < 24 => (ulong)additionalInformation,
-            24 => ReadUnsigned(1),
-            25 => ReadUnsigned(2),
-            26 => ReadUnsigned(4),
-            27 => ReadUnsigned(8),
-            31 => throw new InvalidDataException("Indefinite-length CBOR values are not accepted."),
-            _ => throw new InvalidDataException("CBOR uses a reserved additional-information value."),
-        };
-
-        private ulong ReadUnsigned(int length)
-        {
-            EnsureRemaining(length);
-            ulong result = 0;
-            for (int index = 0; index < length; index++)
-            {
-                result = (result << 8) | bytes[offset++];
-            }
-
-            return result;
-        }
-
-        private byte[] ReadBytes(ulong lengthValue)
-        {
-            int length = CheckedLength(lengthValue, MaximumCborBytes);
-            EnsureRemaining(length);
-            byte[] value = bytes.AsSpan(offset, length).ToArray();
-            offset += length;
-            return value;
-        }
-
-        private List<object?> ReadArray(ulong countValue, int depth)
-        {
-            int count = CheckedLength(countValue, MaximumCollectionItems);
-            List<object?> result = new(count);
-            for (int index = 0; index < count; index++)
-            {
-                result.Add(ReadValue(depth));
-            }
-
-            return result;
-        }
-
-        private Dictionary<string, object?> ReadMap(ulong countValue, int depth)
-        {
-            int count = CheckedLength(countValue, MaximumCollectionItems);
-            Dictionary<string, object?> result = new(count, StringComparer.Ordinal);
-            for (int index = 0; index < count; index++)
-            {
-                if (ReadValue(depth) is not string key || !result.TryAdd(key, ReadValue(depth)))
-                {
-                    throw new InvalidDataException("Profile lighting CBOR contains an invalid map key.");
-                }
-            }
-
-            return result;
-        }
-
-        private static object? ReadSimple(int additionalInformation, ulong argument) => additionalInformation switch
-        {
-            20 => false,
-            21 => true,
-            22 => null,
-            // ReadArgument has already consumed the 2-, 4-, or 8-byte floating-point payload.
-            25 or 26 or 27 => argument,
-            _ => argument,
-        };
-
-        private static int CheckedLength(ulong value, int maximum) =>
-            value <= (ulong)maximum
-                ? (int)value
-                : throw new InvalidDataException("Profile lighting CBOR exceeds its collection bounds.");
-
-        private void EnsureRemaining(int count)
-        {
-            if (count < 0 || offset > bytes.Length - count)
-            {
-                throw new InvalidDataException("Profile lighting CBOR is truncated.");
-            }
-        }
-    }
 }

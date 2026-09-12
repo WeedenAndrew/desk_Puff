@@ -7,8 +7,15 @@ Lorax service can be opened through Windows.
 | Product | Chamber | Discovery | Read-only telemetry | Device control |
 | --- | --- | --- | --- | --- |
 | Peak Pro Bluetooth base | 3D | Implemented; physical validation pending | Implemented; physical validation pending | Safety-locked |
-| Peak Pro Bluetooth base | 3DXL | Implemented; physical validation pending | Implemented; physical validation pending | Safety-locked |
+| Peak Pro Bluetooth base | 3DXL | Validated on hardware | Validated on hardware | Validated on model 13 / firmware AN only |
 | New Proxy app-enabled base | Product chamber | Experimental name/service detection | Experimental; physical validation pending | Safety-locked |
+
+The validated row covers **one physical device**, model code 13 on firmware AN.
+Every other model and firmware pair is read-only regardless of product name. What
+has been exercised on that device, and the two defects it exposed, is recorded in
+[compatibility/peak-pro-13-AN.md](compatibility/peak-pro-13-AN.md): allowlisted
+setting writes with read-back, stop, start at a factory profile, profile
+switching, and both quick-hit boosts to their cumulative ceilings.
 
 The New Peak, Pivot, legacy Proxy, original Peak, and any other product that
 does not expose the app-enabled Bluetooth service are excluded. A 3D or 3DXL

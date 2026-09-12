@@ -4,12 +4,16 @@
 # device will tell us. The only Lorax verbs this script permits are 0x00 seed,
 # 0x01 unlock, 0x02 discovery probe, and 0x10 read. Nothing heats and no device
 # setting or profile slot is changed.
+# Device-write frames cannot be constructed: New-Frame accepts only the four
+# read/authentication verbs listed above. No heater command is issued.
 #
 # Needs nothing installed. Windows PowerShell is enough.
 #
 # Two logs land beside this script:
 #   survey-<stamp>.log    what the device said, decoded
 #   frames-<stamp>.jsonl  every frame out and every frame back, raw
+
+param([switch]$WatchSession)
 
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -43,8 +47,10 @@ $psi.Arguments = "--stdio"
 $psi.UseShellExecute = $false
 $psi.RedirectStandardInput = $true
 $psi.RedirectStandardOutput = $true
+$psi.RedirectStandardError = [bool]$WatchSession
 $psi.CreateNoWindow = $true
 $proc = [System.Diagnostics.Process]::Start($psi)
+if ($WatchSession) { $stderrDrain = $proc.StandardError.ReadToEndAsync() }
 
 # Raw bytes onto the pipe, not the StreamWriter. A StreamWriter built from
 # Encoding.UTF8 emits a byte order mark on its first write; the helper reads one
@@ -67,14 +73,29 @@ $stdin.Write([byte[]](0x0A), 0, 1)
 $stdin.Flush()
 $proc.StandardOutput.ReadLine() | Out-Null
 
-function Invoke-Helper([hashtable]$request) {
+function Invoke-Helper([hashtable]$request, [int]$timeoutMilliseconds = 0) {
+    if ($script:helperUnavailable) { throw $script:helperUnavailable }
     $json = $request | ConvertTo-Json -Compress
     Write-Frame "request" @{ json = $json }
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($json + "`n")
     $stdin.Write($bytes, 0, $bytes.Length)
     $stdin.Flush()
-    $line = $proc.StandardOutput.ReadLine()
-    if ($null -eq $line) { throw "The helper closed its pipe. It may have panicked; rebuild in debug for the message." }
+    if ($timeoutMilliseconds -gt 0) {
+        $pending = $proc.StandardOutput.ReadLineAsync()
+        if (-not $pending.Wait($timeoutMilliseconds)) {
+            # A late response cannot safely be paired with another request. Keep
+            # recording rows, but stop using this pipe; never reconnect or retry.
+            $script:helperUnavailable = "Helper reply timed out; pipe retired to avoid response misalignment."
+            throw $script:helperUnavailable
+        }
+        $line = $pending.GetAwaiter().GetResult()
+    } else {
+        $line = $proc.StandardOutput.ReadLine()
+    }
+    if ($null -eq $line) {
+        if ($WatchSession) { $script:helperUnavailable = "The helper closed its pipe." }
+        throw "The helper closed its pipe. It may have panicked; rebuild in debug for the message."
+    }
     $response = $line | ConvertFrom-Json
     Write-Frame "response" $response
     return $response
@@ -138,6 +159,8 @@ function Add-StatusRecord([byte]$status, [string]$target) {
 
 function Invoke-Lorax([byte]$opcode, [byte[]]$body, [string]$label, [string]$target) {
     $built = New-Frame $opcode $body
+    Write-Survey ("  {0} REQUEST label={1} target={2} sequence={3} opcode=0x{4:X2} frame={5}" -f `
+        (Get-Date -Format "HH:mm:ss.fff"), $label, $target, $built.Sequence, $opcode, (Format-Hex $built.Frame))
     $script:sequence = $script:sequence + 1
     $response = Invoke-Helper @{
         id                = $script:sequence
@@ -146,16 +169,20 @@ function Invoke-Lorax([byte]$opcode, [byte[]]$body, [string]$label, [string]$tar
         expectedSequence  = $built.Sequence
     }
     if (-not $response.success) {
-        Write-Survey ("  {0,-28} STATUS=n/a FAILED  {1}" -f $label, $response.error)
+        Write-Survey ("  {0,-28} target={1} sequence={2} STATUS=n/a FAILED no reply frame: {3}" -f `
+            $label, $target, $built.Sequence, $response.error)
         return $null
     }
     $reply = [Convert]::FromBase64String($response.frameBase64)
     if ($reply.Length -lt 3) {
-        Write-Survey ("  {0,-28} STATUS=n/a FAILED  short reply ({1} bytes)" -f $label, $reply.Length)
+        Write-Survey ("  {0,-28} STATUS=n/a FAILED short reply ({1} bytes) frame={2}" -f `
+            $label, $reply.Length, (Format-Hex $reply))
         return $null
     }
 
     $parsed = ConvertFrom-LoraxReply $reply
+    Write-Survey ("  {0} REPLY label={1} target={2} sequence={3} STATUS=0x{4:X2} payloadLength={5} frame={6}" -f `
+        (Get-Date -Format "HH:mm:ss.fff"), $label, $target, $parsed.Sequence, $parsed.Status, $parsed.Payload.Length, (Format-Hex $reply))
     Add-StatusRecord $parsed.Status $target
     return $parsed
 }
@@ -222,6 +249,30 @@ function Read-RawPath([string]$path, [int]$size, [string]$label, [int]$offset = 
     Invoke-RawProbe 0x10 (New-ReadBody $path $size $offset) $label $path
 }
 
+function Invoke-LimitExperiments {
+    Write-Survey ""
+    Write-Survey "-- payload ceiling: single raw reads, offset 0, no retry or chunking --"
+    # This value measured 517 bytes on PEAKSHI V2 firmware 39 on 2026-08-31.
+    # It is large enough that a short value cannot explain a 125-byte response.
+    foreach ($size in @(126, 125, 124)) {
+        $label = "payload-ceiling requested=$size offset=0"
+        Read-RawPath "/u/app/hc/0/colr" $size $label
+    }
+
+    Write-Survey ""
+    Write-Survey "-- path-length differential: presumed nonexistent ASCII paths --"
+    # Same nonexistent prefix, differing only in suffix length. Existence is not
+    # guaranteed; a successful read invalidates that negative-control assumption.
+    foreach ($length in @(20, 50)) {
+        $path = "/p/zzprobe/" + ("x" * ($length - 11))
+        if ($path.Length -ne $length) { throw "Probe path length mismatch." }
+        $label = "path-length chars=$length utf8Bytes=$length requested=1 offset=0"
+        Read-RawPath $path 1 $label
+    }
+    Write-Survey "Identical errors are inconclusive; different errors motivate a boundary test, not a proven limit of 40."
+    Write-Survey "Capabilities come from CompatibilityCatalog by family; model/firmware reads below identify that lookup. No capability wire path is known."
+}
+
 function Write-StatusSummary {
     Write-Survey ""
     Write-Survey "-- status summary --"
@@ -237,6 +288,76 @@ function Write-StatusSummary {
         Write-Survey ("  STATUS=0x{0:X2} count={1} paths/targets: {2}" -f `
             $status, $group.Count, ($targets -join ", "))
     }
+}
+
+function Read-WatchValue([string]$path, [bool]$isState, [int]$timeoutMilliseconds) {
+    $size = if ($isState) { 1 } else { 4 }
+    $built = New-Frame 0x10 (New-ReadBody $path $size)
+    $script:sequence++
+    $response = Invoke-Helper @{
+        id = $script:sequence
+        operation = "runCommand"
+        frameBase64 = [Convert]::ToBase64String($built.Frame)
+        expectedSequence = $built.Sequence
+    } $timeoutMilliseconds
+    if (-not $response.success) { throw "Helper error: $($response.error)" }
+    $reply = ConvertFrom-LoraxReply ([Convert]::FromBase64String($response.frameBase64))
+    if ($reply.Sequence -ne $built.Sequence) { throw "Reply sequence mismatch." }
+    Add-StatusRecord $reply.Status $path
+    if ($reply.Status -ne 0) { return "S{0:X2}" -f $reply.Status }
+    $script:watchLastSuccess = "{0} {1}" -f (Get-Date -Format "o"), $path
+    if ($reply.Payload.Length -ne $size) { return "LEN=$($reply.Payload.Length)" }
+    if ($isState) { return $reply.Payload[0].ToString([Globalization.CultureInfo]::InvariantCulture) }
+    return [BitConverter]::ToSingle($reply.Payload, 0).ToString("0.000", [Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Watch-Session {
+    $paths = @('/p/app/tmpo', '/p/app/timo', '/p/app/htr/tcmd',
+        '/p/app/htr/temp', '/p/app/stat/elap', '/p/app/stat/id', '/p/app/thc/temp')
+    $script:watchLastSuccess = "none"
+    $script:helperUnavailable = $null
+    Write-Survey "WATCH BEGIN: 120 seconds, 1500 ms cadence. Start the session and apply any boost on the device itself."
+    Write-Survey "Values are sequential reads, not atomic. Sxx=status failure; ERR=transport/read error; END=deadline; no stale values reused."
+    Write-Survey "timestamp                         elapsed_ms       tmpo       timo       tcmd       temp       elap      state profile_C pass_ms notes"
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $next = 0L
+    $previousState = $null
+    while ($clock.ElapsedMilliseconds -lt 120000) {
+        $delay = [Math]::Min($next, 120000) - $clock.ElapsedMilliseconds
+        if ($delay -gt 0) { Start-Sleep -Milliseconds ([int]$delay) }
+        if ($clock.ElapsedMilliseconds -ge 120000) { break }
+        $started = $clock.ElapsedMilliseconds
+        $timestamp = Get-Date -Format "o"
+        $cells = @()
+        $notes = @()
+        foreach ($path in $paths) {
+            $remaining = 120000 - $clock.ElapsedMilliseconds
+            if ($remaining -le 0) { $cells += 'END'; continue }
+            try {
+                $cells += Read-WatchValue $path ($path -eq '/p/app/stat/id') ([int][Math]::Min(4000, $remaining))
+            } catch {
+                $cells += 'ERR'
+                $message = $_.Exception.Message -replace '[\r\n]+', ' '
+                $notes += "$(Get-Date -Format 'HH:mm:ss.fff') $path $message"
+                Write-Frame "watch-error" @{ path = $path; error = $message; lastSuccessfulRead = $script:watchLastSuccess }
+            }
+        }
+        if ($cells[5] -match '^\d+$') {
+            if ($null -ne $previousState -and $previousState -ne $cells[5]) {
+                $notes += "state=$previousState->$($cells[5])"
+            }
+            $previousState = $cells[5]
+        }
+        if ($cells -contains 'ERR') { $notes += "lastSuccessfulRead=$script:watchLastSuccess" }
+        Write-Survey ("{0} {1,10} {2,10} {3,10} {4,10} {5,10} {6,10} {7,10} {8,9} {9,7} {10}" -f `
+            $timestamp, $started, $cells[0], $cells[1], $cells[2], $cells[3], $cells[4], $cells[5], $cells[6],
+            ($clock.ElapsedMilliseconds - $started), ($notes -join '; '))
+        # Anchor cadence to elapsed time; slow failures skip slots instead of
+        # adding 1.5 s after every pass or issuing a burst of catch-up requests.
+        $next = ([Math]::Floor($clock.ElapsedMilliseconds / 1500) + 1) * 1500
+    }
+    Write-Survey ("WATCH END {0} elapsed_ms={1} lastSuccessfulRead={2}" -f `
+        (Get-Date -Format 'o'), $clock.ElapsedMilliseconds, $script:watchLastSuccess)
 }
 
 # ---- run --------------------------------------------------------------------
@@ -297,10 +418,16 @@ try {
     }
 
     Write-Survey ""
+    if ($WatchSession) {
+        Watch-Session
+        return
+    }
     Write-Survey "-- opcode 0x02 probes (raw, no interpretation) --"
     Invoke-RawProbe 0x02 @() "empty body" "<empty body>"
     $verbProbePath = "/p/sys/fw/ver"
     Invoke-RawProbe 0x02 (New-ReadBody $verbProbePath 32) "read-shaped body" $verbProbePath
+
+    Invoke-LimitExperiments
 
     Write-Survey ""
     Write-Survey "-- device --"
@@ -333,10 +460,8 @@ try {
         Read-Path "/u/app/hc/$i/time"   4 "    duration"
         Read-Path "/u/app/hc/$i/btmp"   4 "    boost temp"
         Read-Path "/u/app/hc/$i/btim"   4 "    boost time"
-        # 125, not 128. Opcode 0x02 reports this device's maximum single read as
-        # 125 bytes (7D 00), and 128 is the only size in this whole survey that
-        # exceeds it — which is also the only read that fails with status 0x7A.
-        # The path was never wrong; the request was three bytes too large.
+        # Keep the working 125-byte reads. The experiment above tests whether
+        # the first GetLimits field actually denotes a read-payload ceiling.
         Read-RawPath "/u/app/hc/$i/colr" 125 "    colorway /u"
         Read-RawPath "/p/app/hc/$i/colr" 125 "    colorway /p"
     }
@@ -362,10 +487,14 @@ try {
 }
 finally {
     Write-StatusSummary
-    try { Invoke-Helper @{ id = 900; operation = "disconnect" } | Out-Null } catch { }
-    try { Invoke-Helper @{ id = 901; operation = "shutdown" } | Out-Null } catch { }
+    $cleanupTimeout = if ($WatchSession) { 4000 } else { 0 }
+    try { Invoke-Helper @{ id = 900; operation = "disconnect" } $cleanupTimeout | Out-Null } catch { }
+    try { Invoke-Helper @{ id = 901; operation = "shutdown" } $cleanupTimeout | Out-Null } catch { }
     try { if (-not $proc.HasExited) { $proc.WaitForExit(3000) | Out-Null } } catch { }
     try { if (-not $proc.HasExited) { $proc.Kill() } } catch { }
+    if ($WatchSession -and $stderrDrain.Wait(3000)) {
+        Write-Frame "helper-stderr" @{ text = $stderrDrain.GetAwaiter().GetResult() }
+    }
     Write-Host ""
     Write-Host "survey : $surveyLog"
     Write-Host "frames : $frameLog"

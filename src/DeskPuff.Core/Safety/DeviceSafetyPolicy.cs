@@ -218,7 +218,7 @@ public sealed class DeviceSafetyPolicy
         }
 
         int deviceLimit = snapshot.Capabilities!.MaximumConsecutiveBoosts;
-        const int applicationLimit = 4;
+        const int applicationLimit = 3;
         int allowedBoosts = Math.Min(deviceLimit, applicationLimit);
         return allowedBoosts > 0 && boostsAlreadyApplied < allowedBoosts
             ? SafetyDecision.Allow()
@@ -253,7 +253,8 @@ public sealed class DeviceSafetyPolicy
     public SafetyDecision ValidateTemperatureBoost(
         DeviceSnapshot snapshot,
         int boostsAlreadyApplied,
-        double temperatureCelsius)
+        double temperatureCelsius,
+        double appliedTemperatureCelsius = 0)
     {
         SafetyDecision operation = ValidateBoost(
             DeviceAction.BoostTemperature,
@@ -267,7 +268,9 @@ public sealed class DeviceSafetyPolicy
         DeviceLimits limits = snapshot.Limits!;
         if (!double.IsFinite(temperatureCelsius) ||
             temperatureCelsius <= 0 ||
-            temperatureCelsius > limits.MaximumBoostTemperatureCelsius)
+            !double.IsFinite(appliedTemperatureCelsius) ||
+            appliedTemperatureCelsius < 0 ||
+            appliedTemperatureCelsius + temperatureCelsius > limits.MaximumBoostTemperatureCelsius)
         {
             return SafetyDecision.Deny("The requested temperature increase is outside verified limits.");
         }
@@ -283,7 +286,8 @@ public sealed class DeviceSafetyPolicy
     public SafetyDecision ValidateTimeBoost(
         DeviceSnapshot snapshot,
         int boostsAlreadyApplied,
-        TimeSpan duration)
+        TimeSpan duration,
+        double appliedDurationSeconds = 0)
     {
         SafetyDecision operation = ValidateBoost(
             DeviceAction.BoostTime,
@@ -295,7 +299,10 @@ public sealed class DeviceSafetyPolicy
         }
 
         DeviceLimits limits = snapshot.Limits!;
-        if (duration <= TimeSpan.Zero || duration > limits.MaximumBoostDuration)
+        if (duration <= TimeSpan.Zero ||
+            !double.IsFinite(appliedDurationSeconds) ||
+            appliedDurationSeconds < 0 ||
+            appliedDurationSeconds + duration.TotalSeconds > limits.MaximumBoostDuration.TotalSeconds)
         {
             return SafetyDecision.Deny("The requested time increase is outside verified limits.");
         }

@@ -160,7 +160,7 @@ public sealed class DeviceSafetyPolicyTests
     }
 
     [TestMethod]
-    public void Boost_IsCappedAtFourPerSession()
+    public void Boost_IsCappedAtThreePerType()
     {
         DeviceSnapshot active = SafeSnapshot() with
         {
@@ -168,8 +168,8 @@ public sealed class DeviceSafetyPolicyTests
             Capabilities = SafeSnapshot().Capabilities! with { MaximumConsecutiveBoosts = 10 },
         };
 
-        Assert.IsTrue(policy.ValidateBoost(DeviceAction.BoostTime, active, 3).IsAllowed);
-        Assert.IsFalse(policy.ValidateBoost(DeviceAction.BoostTime, active, 4).IsAllowed);
+        Assert.IsTrue(policy.ValidateBoost(DeviceAction.BoostTime, active, 2).IsAllowed);
+        Assert.IsFalse(policy.ValidateBoost(DeviceAction.BoostTime, active, 3).IsAllowed);
     }
 
     [TestMethod]
@@ -189,6 +189,28 @@ public sealed class DeviceSafetyPolicyTests
             5,
             TimeSpan.FromSeconds(31),
             limits).IsAllowed);
+    }
+
+    [TestMethod]
+    public void BoostCeilings_RejectCumulativeTotalsEvenWhenIndividualIncrementFits()
+    {
+        DeviceSnapshot active = SafeSnapshot() with
+        {
+            OperatingState = DeviceOperatingState.Active,
+            TargetTemperatureCelsius = 250,
+            SessionTotal = TimeSpan.FromSeconds(60),
+            Limits = SafeSnapshot().Limits! with
+            {
+                MaximumBoostTemperatureCelsius = 15 * 5.0 / 9.0,
+                MaximumBoostDuration = TimeSpan.FromSeconds(30),
+            },
+        };
+        Assert.IsTrue(policy.ValidateTemperatureBoost(active, 2, 2, 5).IsAllowed);
+        Assert.IsFalse(policy.ValidateTemperatureBoost(active, 2, 2, 7).IsAllowed);
+        Assert.IsFalse(policy.ValidateTemperatureBoost(active, 0, 2, double.NaN).IsAllowed);
+        Assert.IsTrue(policy.ValidateTimeBoost(active, 2, TimeSpan.FromSeconds(10), 20).IsAllowed);
+        Assert.IsFalse(policy.ValidateTimeBoost(active, 2, TimeSpan.FromSeconds(10), 25).IsAllowed);
+        Assert.IsFalse(policy.ValidateTimeBoost(active, 0, TimeSpan.FromSeconds(10), -1).IsAllowed);
     }
 
     [TestMethod]

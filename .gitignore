@@ -27,3 +27,6 @@ Thumbs.db
 # Local working notes, kept outside version control
 *.local.md
 notes/
+
+# Staged for deletion, reviewed by hand before it goes. See remove/README.md.
+remove/

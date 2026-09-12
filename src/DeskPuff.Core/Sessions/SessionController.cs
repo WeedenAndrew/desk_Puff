@@ -11,7 +11,12 @@ public sealed class SessionController(
 {
     private readonly SemaphoreSlim commandGate = new(1, 1);
     private readonly IDiagnosticLog diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
-    private int boostsApplied;
+    // Independent app-call counters loosen the total allowance from four to six (three each).
+    // At +5 F / 10 s device steps, both cumulative ceilings bind within three steps,
+    // making the count a backstop. This holds only while those step sizes reach the
+    // ceilings within three steps; smaller configured steps make the count bind first.
+    private int temperatureBoostsApplied;
+    private int timeBoostsApplied;
     private int disposeRequested;
 
     public DeviceSnapshot Snapshot => client.Snapshot;
@@ -73,7 +78,8 @@ public sealed class SessionController(
             async () =>
             {
                 await client.StartSessionAsync(cancellationToken).ConfigureAwait(false);
-                boostsApplied = 0;
+                temperatureBoostsApplied = 0;
+                timeBoostsApplied = 0;
             },
             cancellationToken);
 
@@ -83,10 +89,13 @@ public sealed class SessionController(
             async () =>
             {
                 await client.StopSessionAsync(cancellationToken).ConfigureAwait(false);
-                boostsApplied = 0;
+                temperatureBoostsApplied = 0;
+                timeBoostsApplied = 0;
             },
             cancellationToken);
 
+    // These preflight checks omit accumulated amounts. LoraxDeviceClient.ApplyBoostAsync
+    // owns cumulative validation using freshly read overrides before each write.
     public Task BoostTemperatureAsync(
         double temperatureCelsius,
         CancellationToken cancellationToken) =>
@@ -94,7 +103,7 @@ public sealed class SessionController(
             DeviceAction.BoostTemperature,
             () => safetyPolicy.ValidateTemperatureBoost(
                 Snapshot,
-                boostsApplied,
+                temperatureBoostsApplied,
                 temperatureCelsius),
             () => client.BoostTemperatureAsync(temperatureCelsius, cancellationToken),
             cancellationToken);
@@ -102,7 +111,7 @@ public sealed class SessionController(
     public Task BoostTimeAsync(TimeSpan duration, CancellationToken cancellationToken) =>
         RunBoostAsync(
             DeviceAction.BoostTime,
-            () => safetyPolicy.ValidateTimeBoost(Snapshot, boostsApplied, duration),
+            () => safetyPolicy.ValidateTimeBoost(Snapshot, timeBoostsApplied, duration),
             () => client.BoostTimeAsync(duration, cancellationToken),
             cancellationToken);
 
@@ -159,7 +168,8 @@ public sealed class SessionController(
             {
                 EnsureAllowed(action, validate());
                 await operation().ConfigureAwait(false);
-                boostsApplied++;
+                if (action == DeviceAction.BoostTemperature) { temperatureBoostsApplied++; }
+                else { timeBoostsApplied++; }
             },
             cancellationToken);
 

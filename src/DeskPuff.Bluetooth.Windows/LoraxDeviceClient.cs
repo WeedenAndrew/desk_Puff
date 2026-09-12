@@ -300,22 +300,78 @@ public sealed class LoraxDeviceClient : IDeviceClient
 
     public Task BoostTemperatureAsync(
         double temperatureCelsius,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) =>
+        ApplyBoostAsync(DeviceAction.BoostTemperature, temperatureCelsius, cancellationToken);
+
+    public Task BoostTimeAsync(TimeSpan duration, CancellationToken cancellationToken) =>
+        ApplyBoostAsync(DeviceAction.BoostTime, duration.TotalSeconds, cancellationToken);
+
+    private async Task ApplyBoostAsync(DeviceAction action, double increment, CancellationToken cancellationToken)
     {
-        EnsureAllowed(
-            DeviceAction.BoostTemperature,
-            safetyPolicy.ValidateTemperatureBoost(Snapshot, 0, temperatureCelsius));
-        throw new DeviceSafetyException(
-            "Independent temperature boost awaits hardware validation for this firmware.");
+        EnsureAllowed(action, safetyPolicy.Evaluate(action, Snapshot));
+        if (!double.IsFinite(increment) || increment <= 0)
+        {
+            EnsureAllowed(action, SafetyDecision.Deny("The boost increment must be positive and finite."));
+        }
+
+        DeviceSnapshot live = await RefreshAsync(cancellationToken).ConfigureAwait(false);
+        EnsureAllowed(action, safetyPolicy.Evaluate(action, live));
+        bool temperature = action == DeviceAction.BoostTemperature;
+        string path = temperature ? LoraxPaths.TemperatureOverride : LoraxPaths.TimeOverride;
+        double applied = await ReadBoostValueAsync(action, path, cancellationToken).ConfigureAwait(false);
+        // Count device button steps, not app requests: tmpo / btmp or timo / btim.
+        // The denominator is the profile's configured step, never the requested increment.
+        string stepPath = temperature
+            ? LoraxPaths.ProfileBoostTemperature(live.ActiveProfileIndex)
+            : LoraxPaths.ProfileBoostTime(live.ActiveProfileIndex);
+        double countIncrement = await ReadBoostValueAsync(action, stepPath, cancellationToken).ConfigureAwait(false);
+        // Zero is a legitimate profile setting, but cannot establish a device-step count.
+        // Fail closed with an actionable message before division; do not invent a step.
+        if (!double.IsFinite(countIncrement) || countIncrement <= 0)
+        {
+            string reason = $"Cannot boost: the profile's configured {(temperature ? "temperature" : "time")} boost step must be positive. No boost was sent.";
+            EnsureAllowed(action, SafetyDecision.Deny(reason));
+        }
+        double count = Math.Round(applied / countIncrement, MidpointRounding.AwayFromZero);
+        if (!double.IsFinite(count) || count > int.MaxValue)
+        {
+            EnsureAllowed(action, SafetyDecision.Deny("The device boost count cannot be determined."));
+        }
+        double limit = temperature ? live.Limits!.MaximumBoostTemperatureCelsius : live.Limits!.MaximumBoostDuration.TotalSeconds;
+        // Clamp the last increment to the cumulative ceiling. Round down when f32
+        // encoding would exceed that ceiling; refuse if no representable increase remains.
+        float total = (float)Math.Min(applied + increment, limit);
+        if (total > limit) { total = MathF.BitDecrement(total); }
+        if (total <= applied) { EnsureAllowed(action, SafetyDecision.Deny("The cumulative boost ceiling has been reached.")); }
+        double effectiveIncrement = total - applied;
+        if (temperature)
+        {
+            live = live with
+            {
+                TargetTemperatureCelsius = await ReadBoostValueAsync(
+                action, LoraxPaths.HeaterTargetTemperature, cancellationToken).ConfigureAwait(false)
+            };
+        }
+        EnsureAllowed(action, temperature
+            ? safetyPolicy.ValidateTemperatureBoost(live, (int)count, effectiveIncrement, applied)
+            : safetyPolicy.ValidateTimeBoost(live, (int)count, TimeSpan.FromSeconds(effectiveIncrement), applied));
+        // Recheck state after the reads; a session may have ended while they ran.
+        byte state = (await ReadAsync(LoraxPaths.OperatingState, 1, cancellationToken).ConfigureAwait(false)).Span[0];
+        EnsureAllowed(action, safetyPolicy.Evaluate(action, live with { OperatingState = MapOperatingState(state) }));
+        await WriteAndVerifyAsync(path, LoraxValueCodec.WriteSingle(total), cancellationToken).ConfigureAwait(false);
+        if (!traceWrites) { await RefreshAsync(cancellationToken).ConfigureAwait(false); }
     }
 
-    public Task BoostTimeAsync(TimeSpan duration, CancellationToken cancellationToken)
+    private async Task<double> ReadBoostValueAsync(DeviceAction action, string path, CancellationToken cancellationToken)
     {
-        EnsureAllowed(
-            DeviceAction.BoostTime,
-            safetyPolicy.ValidateTimeBoost(Snapshot, 0, duration));
-        throw new DeviceSafetyException(
-            "Independent time boost awaits hardware validation for this firmware.");
+        ReadOnlyMemory<byte> value = await ReadAsync(path, 4, cancellationToken).ConfigureAwait(false);
+        if (value.Length != 4) { throw new InvalidDataException("A boost read must contain exactly four bytes."); }
+        double number = LoraxValueCodec.ReadSingle(value.Span);
+        if (!double.IsFinite(number) || number < 0)
+        {
+            EnsureAllowed(action, SafetyDecision.Deny("The device returned an invalid boost value."));
+        }
+        return number;
     }
 
     public async Task SetStealthModeAsync(bool enabled, CancellationToken cancellationToken)

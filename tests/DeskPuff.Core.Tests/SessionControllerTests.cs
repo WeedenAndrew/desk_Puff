@@ -36,7 +36,7 @@ public sealed class SessionControllerTests
     }
 
     [TestMethod]
-    public async Task SessionBoostLimit_IsEnforcedBeforeFifthWrite()
+    public async Task SessionBoostLimit_IsEnforcedBeforeFourthWrite()
     {
         FakeDeviceClient client = new()
         {
@@ -51,14 +51,52 @@ public sealed class SessionControllerTests
         };
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
 
-        for (int count = 0; count < 4; count++)
+        for (int count = 0; count < 3; count++)
         {
             await controller.BoostTimeAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
         }
 
         await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
             controller.BoostTimeAsync(TimeSpan.FromSeconds(5), CancellationToken.None));
-        Assert.AreEqual(4, client.BoostCallCount);
+        Assert.AreEqual(3, client.BoostCallCount);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task BoostCounters_AreIndependentAndBothReset(bool resetByStart)
+    {
+        FakeDeviceClient client = new()
+        {
+            Snapshot = FakeDeviceClient.CreateSafeSnapshot() with { OperatingState = DeviceOperatingState.Active },
+        };
+        await using SessionController controller = new(client, new DeviceSafetyPolicy());
+        for (int session = 0; session < 2; session++)
+        {
+            for (int count = 0; count < 3; count++)
+            {
+                await controller.BoostTemperatureAsync(1, CancellationToken.None);
+            }
+            await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
+                controller.BoostTemperatureAsync(1, CancellationToken.None));
+            for (int count = 0; count < 3; count++)
+            {
+                await controller.BoostTimeAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+            }
+            await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
+                controller.BoostTimeAsync(TimeSpan.FromSeconds(5), CancellationToken.None));
+            if (session == 0)
+            {
+                if (resetByStart)
+                {
+                    client.Snapshot = client.Snapshot with { OperatingState = DeviceOperatingState.Idle };
+                    await controller.StartAsync(CancellationToken.None);
+                }
+                else { await controller.StopAsync(CancellationToken.None); }
+                client.Snapshot = client.Snapshot with { OperatingState = DeviceOperatingState.Active };
+            }
+        }
+        Assert.AreEqual(6, client.BoostCallCount);
     }
 
     [TestMethod]
@@ -91,7 +129,7 @@ public sealed class SessionControllerTests
     {
         private int concurrentCommands;
 
-        public DeviceSnapshot Snapshot { get; init; } = CreateSafeSnapshot();
+        public DeviceSnapshot Snapshot { get; set; } = CreateSafeSnapshot();
 
         public event EventHandler<DeviceSnapshot>? SnapshotChanged;
 

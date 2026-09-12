@@ -11,8 +11,10 @@ services.
 > Early, independent, and not affiliated with Puff Corp. Live device writes are
 > gated on an allowlist of exact model and firmware pairs, each with recorded
 > operating limits. **One entry exists — the author's own device.** Everything
-> else connects read-only and says so. Use the physical device button if
-> software state is ever uncertain.
+> else connects read-only and says so. **If software state is ever uncertain,
+> press and hold the device's button until it powers off** — that ends the
+> session and the Bluetooth link together, and needs nothing working on the
+> computer.
 
 ![desk_Puff home screen](docs/media/home.png)
 
@@ -66,12 +68,21 @@ helper, runs its tests, and stages it into the published package, so a
 downloaded build can connect. Building locally with the `dotnet` commands below
 does **not** produce it — see [Build and test](#build-and-test).
 
+**Both quick-hit boosts now work on hardware.** Temperature and time boosts are
+read-modify-write against the session-scoped paths `/p/app/tmpo` and
+`/p/app/timo`, each verified by read-back, each clamped to a cumulative ceiling
+that has been reached and held on a real device — +15 °F and 30 seconds. The two
+boost types are counted separately, three each. Evidence is in
+[docs/compatibility/peak-pro-13-AN.md](docs/compatibility/peak-pro-13-AN.md),
+including two defects that validation turned up.
+
+The temperature boost is a **delta**, not a way to reach the device's maximum: a
+480 °F profile boosts to 495 °F and stops.
+
 Running a saved profile for one session is implemented in the application and
 the demo client only. The Bluetooth client does not implement that path, so on
 hardware the app refuses and says so rather than starting the device's own slot.
-The session-scoped paths `/p/app/tmpo` and `/p/app/timo` are allowlisted but
-nothing writes them yet, and no session-scoped path is known for colorway or
-vapor.
+No session-scoped path is known for colorway or vapor.
 
 ## Safety boundaries
 

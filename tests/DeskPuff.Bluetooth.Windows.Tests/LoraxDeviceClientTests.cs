@@ -5,6 +5,7 @@ using DeskPuff.Bluetooth.Windows.Transport;
 using DeskPuff.Core.Devices;
 using DeskPuff.Core.Diagnostics;
 using DeskPuff.Core.Safety;
+using DeskPuff.Core.Sessions;
 
 namespace DeskPuff.Bluetooth.Windows.Tests;
 
@@ -22,6 +23,328 @@ public sealed class LoraxDeviceClientTests
     private static readonly string[] ProfilePrimaryColors = ["#102030", "#202030", "#302030", "#402030"];
     private static readonly byte[] MigrationPathLighting = Convert.FromHexString(
         "A1646C616D70A2646E616D65676D696772746E3165706172616DA165706174687380");
+
+    [TestMethod]
+    [DataRow(DeviceAction.BoostTemperature)]
+    [DataRow(DeviceAction.BoostTime)]
+    public async Task ActiveVerifiedPeakPro_FirstBoostWritesAndVerifiesCumulativeValue(DeviceAction action)
+    {
+        FakeLoraxTransport transport = new()
+        {
+            ModelCode = 13,
+            FirmwareRevision = 39,
+            DeviceName = "PEAKSHI V2",
+            OperatingState = DeviceOperatingState.Active,
+        };
+        LoraxDeviceClient client = new(transport);
+        DeviceSafetyPolicy policy = new();
+        await using SessionController controller = new(client, policy);
+        await controller.ConnectAsync(
+            new DeviceCandidate("test-verified-peak", "PUFFCO PEAK", -40),
+            CancellationToken.None);
+
+        DeviceSnapshot snapshot = controller.Snapshot;
+        Assert.AreEqual(DeviceOperatingState.Active, snapshot.OperatingState);
+        Assert.AreEqual(4, snapshot.Capabilities!.MaximumConsecutiveBoosts);
+        Assert.IsTrue(snapshot.Capabilities.SupportsIndependentBoost);
+        SafetyDecision decision = action == DeviceAction.BoostTemperature
+            ? policy.ValidateTemperatureBoost(snapshot, 0, 5 * 5.0 / 9.0)
+            : policy.ValidateTimeBoost(snapshot, 0, TimeSpan.FromSeconds(10));
+        Assert.IsTrue(decision.IsAllowed, $"Fixture must pass policy before the client call: {decision.Reason}");
+        SafetyDecision idleDecision = policy.Evaluate(action, snapshot with { OperatingState = DeviceOperatingState.Idle });
+        Assert.IsFalse(idleDecision.IsAllowed);
+        Assert.AreEqual("Boost is available only during an active session.", idleDecision.Reason);
+
+        if (action == DeviceAction.BoostTemperature)
+        {
+            await controller.BoostTemperatureAsync(5 * 5.0 / 9.0, CancellationToken.None);
+        }
+        else
+        {
+            await controller.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+        }
+        Assert.AreEqual(1, transport.WriteCount);
+        string path = action == DeviceAction.BoostTemperature ? LoraxPaths.TemperatureOverride : LoraxPaths.TimeOverride;
+        Assert.AreEqual(path, transport.Writes[0].Path);
+        Assert.AreEqual(action == DeviceAction.BoostTemperature ? "1CC73140" : "00002041",
+            Convert.ToHexString(transport.Writes[0].Value));
+        Assert.IsTrue(transport.ReadPaths.Count(value => value == path) >= 2, "Read current value, then verify write.");
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task Boost_AccumulatesThreeValuesAndRefusesFourthAtCeiling(bool temperature)
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        await using LoraxDeviceClient client = new(transport);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        for (int index = 0; index < 3; index++)
+        {
+            if (temperature) { await client.BoostTemperatureAsync(2.778, CancellationToken.None); }
+            else { await client.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None); }
+        }
+        float[] values = transport.Writes.Select(write => BinaryPrimitives.ReadSingleLittleEndian(write.Value)).ToArray();
+        Assert.AreEqual(temperature ? 2.778f : 10f, values[0]);
+        Assert.AreEqual(temperature ? 5.556f : 20f, values[1]);
+        Assert.AreEqual(temperature ? (float)(15 * 5.0 / 9.0) : 30f, values[2]);
+        Assert.IsTrue(values[2] <= (temperature ? 15 * 5.0 / 9.0 : 30));
+        await Assert.ThrowsExactlyAsync<DeviceSafetyException>(async () =>
+        {
+            if (temperature) { await client.BoostTemperatureAsync(2.778, CancellationToken.None); }
+            else { await client.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None); }
+        });
+        Assert.AreEqual(3, transport.WriteCount);
+        Assert.IsFalse(transport.Writes.Any(write => write.Path == LoraxPaths.HeaterTargetTemperature));
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task Boost_CountIncludesPhysicalBoostsFromMatchingOverride(bool temperature)
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        transport.TemperatureApplied = 2;
+        transport.ProfileTemperatureIncrement = 0.5f;
+        transport.TimeApplied = 20;
+        transport.ProfileTimeIncrement = 5;
+        await using LoraxDeviceClient client = new(transport);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        DeviceSafetyException error = await Assert.ThrowsExactlyAsync<DeviceSafetyException>(async () =>
+        {
+            if (temperature) { await client.BoostTemperatureAsync(0.5, CancellationToken.None); }
+            else { await client.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None); }
+        });
+        StringAssert.Contains(error.Message, "per-session boost limit");
+        Assert.AreEqual(0, transport.WriteCount);
+    }
+
+    [TestMethod]
+    [DataRow(DeviceOperatingState.Idle)]
+    [DataRow(DeviceOperatingState.Preheating)]
+    [DataRow(DeviceOperatingState.Fading)]
+    public async Task Boost_RefusesOutsideActive(DeviceOperatingState state)
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        transport.OperatingState = state;
+        await using LoraxDeviceClient client = new(transport);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() => client.BoostTemperatureAsync(2.778, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() => client.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None));
+        Assert.AreEqual(0, transport.WriteCount);
+    }
+
+    [TestMethod]
+    [DataRow(float.NaN)]
+    [DataRow(float.PositiveInfinity)]
+    [DataRow(-1f)]
+    public async Task Boost_RejectsInvalidOverrideReads(float applied)
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        transport.TemperatureApplied = applied;
+        transport.TimeApplied = applied;
+        await using LoraxDeviceClient client = new(transport);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() => client.BoostTemperatureAsync(2.778, CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() => client.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None));
+        Assert.AreEqual(0, transport.WriteCount);
+    }
+
+    [TestMethod]
+    public async Task Boost_SessionEndsDuringRead_RefusesWrite()
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        transport.EndSessionOnOverrideRead = true;
+        await using LoraxDeviceClient client = new(transport);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() => client.BoostTemperatureAsync(2.778, CancellationToken.None));
+        Assert.AreEqual(0, transport.WriteCount);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task Boost_TraceSuppressionSkipsReadBackAndPostWriteRefresh(bool temperature)
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        transport.SuppressWrites = true;
+        RecordingDiagnosticLog log = new();
+        await using LoraxDeviceClient client = new(transport, log, traceWrites: true);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        transport.ReadPaths.Clear();
+        if (temperature) { await client.BoostTemperatureAsync(2.778, CancellationToken.None); }
+        else { await client.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None); }
+        string path = temperature ? LoraxPaths.TemperatureOverride : LoraxPaths.TimeOverride;
+        Assert.AreEqual(0, transport.WriteCount);
+        Assert.AreEqual(1, transport.SuppressedWriteCount);
+        Assert.AreEqual(1, transport.ReadPaths.Count(value => value == path), "Only the pre-write override read is expected.");
+        Assert.AreEqual(1, transport.ReadPaths.Count(value => value == LoraxPaths.HeaterTemperature), "Only the pre-write refresh is expected.");
+    }
+
+    [TestMethod]
+    public async Task Boost_UsesLiveHeaterTargetForAbsoluteCeiling()
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        transport.HeaterTarget = 315;
+        await using LoraxDeviceClient client = new(transport);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() => client.BoostTemperatureAsync(2.778, CancellationToken.None));
+        Assert.AreEqual(0, transport.WriteCount);
+    }
+
+    [TestMethod]
+    [DataRow(LoraxPaths.TemperatureOverride)]
+    [DataRow(LoraxPaths.TimeOverride)]
+    public async Task Boost_ReadBackMismatchFailsWithoutRetry(string path)
+    {
+        FakeLoraxTransport transport = new()
+        {
+            ModelCode = 13,
+            FirmwareRevision = 39,
+            OperatingState = DeviceOperatingState.Active,
+            MismatchedReadBackPath = path,
+        };
+        await using LoraxDeviceClient client = new(transport);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        await Assert.ThrowsExactlyAsync<IOException>(async () =>
+        {
+            if (path == LoraxPaths.TemperatureOverride) { await client.BoostTemperatureAsync(2.778, CancellationToken.None); }
+            else { await client.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None); }
+        });
+        Assert.AreEqual(1, transport.WriteCount);
+    }
+
+    [TestMethod]
+    public async Task Boost_TwoTemperatureThenThreeTimeWrites_ReachIndependentCeilings()
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        transport.ProfileTemperatureIncrement = 2.777778f;
+        await using SessionController controller = new(new LoraxDeviceClient(transport), new DeviceSafetyPolicy());
+        await controller.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+
+        await controller.BoostTemperatureAsync(10 * 5.0 / 9.0, CancellationToken.None);
+        await controller.BoostTemperatureAsync(10 * 5.0 / 9.0, CancellationToken.None);
+        Assert.AreEqual(8.333333, BinaryPrimitives.ReadSingleLittleEndian(transport.Writes[1].Value), 0.000001);
+        DeviceSafetyException temperatureError = await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
+            controller.BoostTemperatureAsync(10 * 5.0 / 9.0, CancellationToken.None));
+        StringAssert.Contains(temperatureError.Message, "cumulative boost ceiling");
+
+        for (int index = 0; index < 3; index++)
+        {
+            await controller.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+            Assert.AreEqual((index + 1) * 10f,
+                BinaryPrimitives.ReadSingleLittleEndian(transport.Writes[index + 2].Value));
+            Assert.AreEqual(LoraxPaths.TimeOverride, transport.Writes[index + 2].Path);
+        }
+        await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
+            controller.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None));
+        Assert.AreEqual(5, transport.WriteCount);
+        Assert.IsFalse(transport.Writes.Any(write => write.Path == LoraxPaths.HeaterTargetTemperature));
+    }
+
+    [TestMethod]
+    public async Task TimeBoost_FiveSecondDeviceStep_RefusesThirdTenSecondRequest()
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        transport.ProfileTimeIncrement = 5;
+        await using SessionController controller = new(new LoraxDeviceClient(transport), new DeviceSafetyPolicy());
+        await controller.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        await controller.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+        await controller.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+        DeviceSafetyException error = await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
+            controller.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None));
+        StringAssert.Contains(error.Message, "per-session boost limit");
+        Assert.AreEqual(2, transport.WriteCount);
+        Assert.AreEqual(20f, BinaryPrimitives.ReadSingleLittleEndian(transport.Writes[1].Value));
+    }
+
+    [TestMethod]
+    public async Task TimeBoost_ZeroConfiguredStep_LoadsButRefusesBeforeAnyWrite()
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        transport.ProfileTimeIncrement = 0;
+        await using LoraxDeviceClient client = new(transport);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        IReadOnlyList<HeatProfile> profiles = await client.GetProfilesAsync(CancellationToken.None);
+        Assert.IsTrue(profiles.All(profile => profile.BoostDuration == TimeSpan.Zero));
+        DeviceSafetyException error = await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
+            client.BoostTimeAsync(TimeSpan.FromSeconds(10), CancellationToken.None));
+        StringAssert.Contains(error.Message, "configured time boost step must be positive");
+        StringAssert.Contains(error.Message, "No boost was sent");
+        Assert.AreEqual(0, transport.WriteCount);
+    }
+
+    [TestMethod]
+    [DataRow(DeviceAction.BoostTemperature, "increment", "The boost increment must be positive and finite.")]
+    [DataRow(DeviceAction.BoostTime, "increment", "The boost increment must be positive and finite.")]
+    [DataRow(DeviceAction.BoostTemperature, "zero-step", "Cannot boost: the profile's configured temperature boost step must be positive. No boost was sent.")]
+    [DataRow(DeviceAction.BoostTime, "zero-step", "Cannot boost: the profile's configured time boost step must be positive. No boost was sent.")]
+    [DataRow(DeviceAction.BoostTemperature, "count", "The device boost count cannot be determined.")]
+    [DataRow(DeviceAction.BoostTime, "count", "The device boost count cannot be determined.")]
+    [DataRow(DeviceAction.BoostTemperature, "ceiling", "The cumulative boost ceiling has been reached.")]
+    [DataRow(DeviceAction.BoostTime, "ceiling", "The cumulative boost ceiling has been reached.")]
+    [DataRow(DeviceAction.BoostTemperature, "invalid-override", "The device returned an invalid boost value.")]
+    [DataRow(DeviceAction.BoostTime, "invalid-override", "The device returned an invalid boost value.")]
+    [DataRow(DeviceAction.BoostTemperature, "invalid-step", "The device returned an invalid boost value.")]
+    [DataRow(DeviceAction.BoostTime, "invalid-step", "The device returned an invalid boost value.")]
+    [DataRow(DeviceAction.BoostTemperature, "invalid-target", "The device returned an invalid boost value.")]
+    public async Task BoostRefusal_LogsExactlyOneBlockWithOriginalException(
+        DeviceAction action, string scenario, string expectedReason)
+    {
+        FakeLoraxTransport transport = BoostTransport();
+        switch (scenario)
+        {
+            case "zero-step":
+                transport.ProfileTemperatureIncrement = 0;
+                transport.ProfileTimeIncrement = 0;
+                break;
+            case "count":
+                transport.TemperatureApplied = 1;
+                transport.TimeApplied = 1;
+                transport.ProfileTemperatureIncrement = float.Epsilon;
+                transport.ProfileTimeIncrement = float.Epsilon;
+                break;
+            case "ceiling":
+                transport.TemperatureApplied = (float)(15 * 5.0 / 9.0);
+                transport.TimeApplied = 30;
+                break;
+            case "invalid-override":
+                transport.TemperatureApplied = float.NaN;
+                transport.TimeApplied = float.NaN;
+                break;
+            case "invalid-step":
+                transport.ProfileTemperatureIncrement = -1;
+                transport.ProfileTimeIncrement = -1;
+                break;
+            case "invalid-target":
+                transport.HeaterTarget = float.NaN;
+                break;
+        }
+        RecordingDiagnosticLog log = new();
+        await using LoraxDeviceClient client = new(transport, log, traceWrites: false);
+        await client.ConnectAsync(new("boost", "PUFFCO PEAK", -40), CancellationToken.None);
+        double increment = scenario == "increment" ? 0 : 1;
+
+        DeviceSafetyException exception = await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
+            action == DeviceAction.BoostTemperature
+                ? client.BoostTemperatureAsync(increment, CancellationToken.None)
+                : client.BoostTimeAsync(TimeSpan.FromSeconds(increment), CancellationToken.None));
+
+        Assert.AreEqual(expectedReason, exception.Message);
+        string[] blocks = log.Text.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => line.StartsWith("WRITE BLOCKED", StringComparison.Ordinal)).ToArray();
+        Assert.HasCount(1, blocks, "A refusal must log once, not silently or twice.");
+        Assert.AreEqual($"WRITE BLOCKED action={action} reason=\"{expectedReason}\"", blocks[0]);
+        Assert.AreEqual(0, transport.WriteCount);
+    }
+
+    private static FakeLoraxTransport BoostTransport() => new()
+    {
+        ModelCode = 13,
+        FirmwareRevision = 39,
+        OperatingState = DeviceOperatingState.Active,
+        ProfileTemperatureIncrement = 2.778f,
+    };
 
     [TestMethod]
     public async Task Connect_AuthenticatesAndKeepsUnknownFirmwareReadOnly()
@@ -300,6 +623,24 @@ public sealed class LoraxDeviceClientTests
 
         public byte FirmwareRevision { get; init; }
 
+        public DeviceOperatingState OperatingState { get; set; } = DeviceOperatingState.Idle;
+
+        public float TemperatureApplied { get; set; }
+
+        public float ProfileTemperatureIncrement { get; set; } = 5;
+
+        public float ProfileTimeIncrement { get; set; } = 10;
+
+        public float TimeApplied { get; set; }
+
+        public float HeaterTarget { get; set; } = 260;
+
+        public bool EndSessionOnOverrideRead { get; set; }
+
+        public bool SuppressWrites { get; set; }
+
+        public int SuppressedWriteCount { get; private set; }
+
         public string DeviceName { get; init; } = "TEST PEAK";
 
         public byte[]? FourthProfileLighting { get; init; }
@@ -380,6 +721,10 @@ public sealed class LoraxDeviceClientTests
 
         private byte[] ReadValue(string path)
         {
+            if (path == LoraxPaths.TemperatureOverride && EndSessionOnOverrideRead)
+            {
+                OperatingState = DeviceOperatingState.Idle;
+            }
             if (writtenValues.TryGetValue(path, out byte[]? writtenValue))
             {
                 return string.Equals(path, MismatchedReadBackPath, StringComparison.Ordinal)
@@ -397,10 +742,13 @@ public sealed class LoraxDeviceClientTests
                 LoraxPaths.BatteryCapacity => Single(6018.443f),
                 LoraxPaths.BatteryChargeState => [4],
                 LoraxPaths.ChamberType => [2],
-                LoraxPaths.OperatingState => [(byte)DeviceOperatingState.Idle],
+                LoraxPaths.OperatingState => [(byte)OperatingState],
                 LoraxPaths.ActiveProfile => [0],
                 LoraxPaths.ActiveProfileName => Encoding.UTF8.GetBytes("BLUE"),
                 LoraxPaths.ActiveProfileTemperature => Single(260),
+                LoraxPaths.TemperatureOverride => Single(TemperatureApplied),
+                LoraxPaths.TimeOverride => Single(TimeApplied),
+                LoraxPaths.HeaterTargetTemperature => Single(HeaterTarget),
                 LoraxPaths.ActiveProfileTime => Single(40),
                 LoraxPaths.HeaterTemperature => Single(25),
                 LoraxPaths.StateTotalTime => Single(40),
@@ -424,8 +772,8 @@ public sealed class LoraxDeviceClientTests
                 "name" => Encoding.UTF8.GetBytes($"PROFILE {index + 1}"),
                 "temp" => Single(260 + index),
                 "time" => Single(40 + index),
-                "btmp" => Single(5),
-                "btim" => Single(10),
+                "btmp" => Single(ProfileTemperatureIncrement),
+                "btim" => Single(ProfileTimeIncrement),
                 "colr" when index == 0 => FirstDeviceLighting,
                 "colr" when index == 3 && FourthProfileLighting is not null => FourthProfileLighting,
                 "colr" => ProfileLightingCodec.EncodeSolid(
@@ -436,6 +784,11 @@ public sealed class LoraxDeviceClientTests
 
         private Task<ReadOnlyMemory<byte>> CountWrite(ReadOnlyMemory<byte> body)
         {
+            if (SuppressWrites)
+            {
+                SuppressedWriteCount++;
+                return Result([]);
+            }
             int terminator = body.Span[3..].IndexOf((byte)0);
             if (terminator < 0)
             {

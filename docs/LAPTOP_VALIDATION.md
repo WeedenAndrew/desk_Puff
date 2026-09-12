@@ -71,8 +71,14 @@ blocked. The UTF-8 log is written beside the executable as
    Bluetooth off before scanning. The app must fail closed and remain read-only.
 9. Reconnect the phone only after desk_Puff has disconnected and exited.
 
-Use the physical device button and close desk_Puff immediately if the base state
-or displayed telemetry is uncertain.
+If the base state or displayed telemetry is uncertain, **press and hold the
+device's button until it powers off**, then close desk_Puff.
+
+Powering off is the abort. There is no gesture that cancels a heat cycle while
+leaving the device on, so this is the whole escape hatch — and it works whether
+or not anything on the computer is responding. It drops the Bluetooth link as
+well, so a connection error in the app afterwards is expected rather than a
+fault.
 
 ## Evidence to record
 
