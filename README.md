@@ -47,7 +47,7 @@ produced.
 
 Profiles come in two kinds. The device's four slots behave as they always have.
 Saved local profiles are JSON files that apply their parameters to a **single
-session** and are dropped when it ends; selecting one writes nothing to a slot,
+session**. Their temporary session settings are dropped when it ends; selecting one writes nothing to a slot,
 and the display says **SAVED PROFILE • NOT ON DEVICE** so it can never be
 mistaken for the device's own state.
 
@@ -79,10 +79,22 @@ including two defects that validation turned up.
 The temperature boost is a **delta**, not a way to reach the device's maximum: a
 480 °F profile boosts to 495 °F and stops.
 
-Running a saved profile for one session is implemented in the application and
-the demo client only. The Bluetooth client does not implement that path, so on
-hardware the app refuses and says so rather than starting the device's own slot.
-No session-scoped path is known for colorway or vapor.
+Choose **USE PROFILE**, then **Start**, to run a saved JSON profile for one
+session. On verified hardware, the Bluetooth client writes and reads back the
+session temperature and duration before starting. On completion it reloads the
+selected device slot; the saved JSON file remains in the local library. This
+software path has managed fake-wire coverage and still needs personal device
+validation. No session-scoped path is known for colorway or vapor; colors are
+not applied live, and nonstandard vapor settings are refused.
+
+**WRITE PROFILE** edits a device slot. It preserves the original lighting
+document, including identity, metadata and animation data. Unchanged animation
+colors are left intact while heating settings change, within the existing
+one-to-four-stop device-profile validation limit. Color edits are limited
+to an existing `solid` RGB palette with the same number of stops; unsupported
+edits are refused before any profile setting is written. Supported edits patch
+only changed bytes and verify the entire document. These lighting writes have
+software regression coverage and still need validation on the device.
 
 ## Safety boundaries
 

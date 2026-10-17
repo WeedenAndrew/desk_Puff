@@ -249,6 +249,191 @@ function Read-RawPath([string]$path, [int]$size, [string]$label, [int]$offset = 
     Invoke-RawProbe 0x10 (New-ReadBody $path $size $offset) $label $path
 }
 
+function Get-CandidateStatusMeaning([byte]$status) {
+    switch ($status) {
+        0x00 { return "EXISTS-READABLE" }
+        0x01 { return "EXISTS-WRITE-ONLY" }
+        0x02 { return "ABSENT" }
+        0x7A { return "LIMIT-EXCEEDED" }
+        default { return "UNCLASSIFIED" }
+    }
+}
+
+function Read-CandidateAttempt([string]$path, [int]$size, [string]$label) {
+    $result = Invoke-Lorax 0x10 (New-ReadBody $path $size) $label $path
+    if ($null -eq $result) {
+        Write-Survey ("  CANDIDATE path={0} requestedSize={1} STATUS=n/a classification=NO-REPLY payloadLength=n/a payload=(unavailable)" -f `
+            $path, $size)
+        return $null
+    }
+
+    $meaning = Get-CandidateStatusMeaning $result.Status
+    Write-Survey ("  CANDIDATE path={0} requestedSize={1} STATUS=0x{2:X2} classification={3} payloadLength={4} payload={5}" -f `
+        $path, $size, $result.Status, $meaning, $result.Payload.Length, (Format-Hex $result.Payload))
+    if ($result.Status -eq 0x01) {
+        Write-Survey ("  CANDIDATE FIND: {0} exists and is write-only (STATUS=0x01)." -f $path)
+    }
+    return $result
+}
+
+function Invoke-CandidatePath([string]$path, [string]$groupLabel) {
+    $initial = Read-CandidateAttempt $path 4 "$groupLabel requested=4"
+    if ($null -ne $initial -and $initial.Status -eq 0x00) {
+        # A readable four-byte prefix does not establish the value's real size.
+        # Re-read from offset zero at both larger sizes and preserve every status.
+        Read-CandidateAttempt $path 32 "$groupLabel requested=32" | Out-Null
+        Read-CandidateAttempt $path 125 "$groupLabel requested=125" | Out-Null
+    }
+    return $initial
+}
+
+function Invoke-CandidateSurvey {
+    $groups = @(
+        [pscustomobject]@{
+            Name = "Group A - thc subtree, by slot-field analogy"
+            Key = "A"
+            Paths = @(
+                "/p/app/thc/colr", "/p/app/thc/vapr", "/p/app/thc/btmp",
+                "/p/app/thc/vpor", "/p/app/thc/vap", "/p/app/thc/btim",
+                "/p/app/thc/lvl", "/p/app/thc/dose", "/p/app/thc/idx"
+            )
+        },
+        [pscustomobject]@{
+            Name = "Group B - <field>o override pattern"
+            Key = "B"
+            Paths = @("/p/app/vapo", "/p/app/colo", "/p/app/lvlo")
+        },
+        [pscustomobject]@{
+            Name = "Group C - slot 0 beyond the six known fields"
+            Key = "C"
+            Paths = @(
+                "/u/app/hc/0/vapr", "/u/app/hc/0/vap", "/u/app/hc/0/lvl",
+                "/u/app/hc/0/vpor", "/u/app/hc/0/dose", "/u/app/hc/0/pres"
+            )
+        },
+        [pscustomobject]@{
+            Name = "Group D - lantern subtree"
+            Key = "D"
+            Paths = @("/p/app/ltrn/colr", "/p/app/ltrn/rgb", "/p/app/ltrn/lvl")
+        }
+    )
+
+    Write-Survey ""
+    Write-Survey "-- read-only candidate path discovery --"
+    Write-Survey "STATUS vocabulary: 0x00=exists/readable; 0x01=exists/write-only; 0x02=absent; 0x7A=limit exceeded; all others unclassified."
+    $groupCHits = @()
+    foreach ($group in $groups) {
+        Write-Survey ""
+        Write-Survey ("-- candidate {0} --" -f $group.Name)
+        foreach ($path in $group.Paths) {
+            $initial = Invoke-CandidatePath $path ("candidate group {0}" -f $group.Key)
+            if ($group.Key -eq "C" -and $null -ne $initial -and $initial.Status -in @(0x00, 0x01)) {
+                $groupCHits += $path
+            }
+        }
+    }
+
+    if ($groupCHits.Count -gt 0) {
+        Write-Survey ""
+        Write-Survey "-- candidate Group C hits across all four stored profile slots --"
+        Write-Survey "Readable hits provide correlatable values; write-only hits remain finds but cannot provide stored payloads."
+        foreach ($hit in $groupCHits) {
+            $field = $hit.Substring($hit.LastIndexOf('/') + 1)
+            foreach ($slot in 0..3) {
+                $slotPath = "/u/app/hc/$slot/$field"
+                Read-CandidateAttempt $slotPath 4 "candidate slot correlation field=$field slot=$slot" | Out-Null
+            }
+        }
+    } else {
+        Write-Survey ""
+        Write-Survey "-- candidate Group C hits across stored profile slots: none (no readable or write-only field found) --"
+    }
+}
+
+function Read-CompleteBlob([string]$path, [string]$label) {
+    [int]$windowSize = 125
+    $offset = 0
+    $assembled = New-Object System.IO.MemoryStream
+    try {
+        while ($true) {
+            if ($offset -gt [uint16]::MaxValue) {
+                Write-Survey ("  BLOB INCOMPLETE path={0} totalLength={1} reason=offset-exceeds-u16" -f `
+                    $path, $assembled.Length)
+                return $false
+            }
+
+            $result = Invoke-Lorax 0x10 (New-ReadBody $path $windowSize $offset) `
+                "$label offset=$offset requested=$windowSize" $path
+            if ($null -eq $result) {
+                Write-Survey ("  BLOB WINDOW path={0} offset={1} requestedSize={2} STATUS=n/a payloadLength=n/a payload=(unavailable)" -f `
+                    $path, $offset, $windowSize)
+                Write-Survey ("  BLOB INCOMPLETE path={0} totalLength={1} reason=no-reply" -f `
+                    $path, $assembled.Length)
+                return $false
+            }
+
+            Write-Survey ("  BLOB WINDOW path={0} offset={1} requestedSize={2} STATUS=0x{3:X2} payloadLength={4} payload={5}" -f `
+                $path, $offset, $windowSize, $result.Status, $result.Payload.Length, (Format-Hex $result.Payload))
+            if ($result.Status -ne 0x00) {
+                Write-Survey ("  BLOB INCOMPLETE path={0} totalLength={1} reason=status-0x{2:X2}" -f `
+                    $path, $assembled.Length, $result.Status)
+                return $false
+            }
+
+            if ($result.Payload.Length -gt 0) {
+                $assembled.Write($result.Payload, 0, $result.Payload.Length)
+            }
+            if ($result.Payload.Length -lt $windowSize) {
+                [byte[]]$bytes = $assembled.ToArray()
+                Write-Survey ("  BLOB COMPLETE path={0} totalLength={1} terminalOffset={2} terminalLength={3} hex={4}" -f `
+                    $path, $bytes.Length, $offset, $result.Payload.Length, (Format-Hex $bytes))
+                return $true
+            }
+
+            # Full windows advance by the number of bytes actually returned. The
+            # device, not a known profile size, decides when the final short read occurs.
+            $offset += $result.Payload.Length
+        }
+    }
+    finally {
+        $assembled.Dispose()
+    }
+}
+
+function Invoke-CompleteBlobSurvey {
+    Write-Survey ""
+    Write-Survey "-- complete colorway CBOR blobs, 125-byte windows until a short or empty payload --"
+    $blobs = @()
+    foreach ($slot in 0..3) {
+        $blobs += [pscustomobject]@{
+            Path = "/u/app/hc/$slot/colr"
+            Label = "profile colorway slot=$slot"
+        }
+    }
+    $blobs += [pscustomobject]@{ Path = "/p/app/thc/colr"; Label = "active session colorway" }
+    $blobs += [pscustomobject]@{ Path = "/p/app/ltrn/colr"; Label = "lantern colorway" }
+
+    $attempted = 0
+    $completed = 0
+    foreach ($blob in $blobs) {
+        $attempted++
+        try {
+            if (Read-CompleteBlob $blob.Path $blob.Label) {
+                $completed++
+            } else {
+                Write-Survey ('  BLOB FAILED path={0} reason="incomplete read; see preceding BLOB INCOMPLETE record"' -f `
+                    $blob.Path)
+            }
+        } catch {
+            $reason = $_.Exception.Message -replace '[\r\n]+', ' ' -replace '"', "'"
+            Write-Survey ('  BLOB FAILED path={0} reason="{1}"' -f $blob.Path, $reason)
+        }
+    }
+
+    Write-Survey ("BLOB SURVEY COMPLETE attempted={0} completed={1} failed={2}" -f `
+        $attempted, $completed, ($attempted - $completed))
+}
+
 function Invoke-LimitExperiments {
     Write-Survey ""
     Write-Survey "-- payload ceiling: single raw reads, offset 0, no retry or chunking --"
@@ -364,6 +549,7 @@ function Watch-Session {
 
 try {
     Write-Survey "desk_Puff device survey  $stamp"
+    Write-Survey ("PowerShell runtime: {0}" -f $PSVersionTable.PSVersion.ToString())
     Write-Survey "READ ONLY. Opcodes used: 0x00 seed, 0x01 unlock, 0x02 probe, 0x10 read."
     Write-Survey ""
 
@@ -416,6 +602,9 @@ try {
                 $unlock.Status, $outcome, (Format-Hex $unlock.Payload))
         }
     }
+
+    Invoke-CandidateSurvey
+    Invoke-CompleteBlobSurvey
 
     Write-Survey ""
     if ($WatchSession) {

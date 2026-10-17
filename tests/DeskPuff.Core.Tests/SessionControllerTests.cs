@@ -8,6 +8,22 @@ namespace DeskPuff.Core.Tests;
 public sealed class SessionControllerTests
 {
     [TestMethod]
+    public async Task UnsupportedSessionOverrides_AreRefusedByController()
+    {
+        FakeDeviceClient client = new();
+        await using SessionController controller = new(client, new DeviceSafetyPolicy());
+        Assert.IsFalse(controller.SupportsSessionOverrides);
+        DeviceSafetyException apply = await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
+            controller.ApplySessionOverrideAsync(new("Local", 220, TimeSpan.FromSeconds(60), VaporLevel.Standard, []), CancellationToken.None));
+        DeviceSafetyException clear = await Assert.ThrowsExactlyAsync<DeviceSafetyException>(() =>
+            controller.ClearSessionOverrideAsync(CancellationToken.None));
+        Assert.AreEqual("The device client does not support session overrides.", apply.Message);
+        Assert.AreEqual(apply.Message, clear.Message);
+        Assert.AreEqual(0, client.RefreshCallCount);
+        Assert.AreEqual(0, client.SelectProfileCallCount);
+    }
+
+    [TestMethod]
     public async Task StateChangingCommand_IsNeverRetried()
     {
         FakeDeviceClient client = new() { StartException = new IOException("transport failed") };

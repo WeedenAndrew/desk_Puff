@@ -12,15 +12,22 @@ internal sealed class CborReader
     private const int MaximumByteStringLength = 4096;
     private readonly byte[] bytes;
     private readonly List<TraceItem>? traceItems;
+    private readonly Dictionary<object, (int Offset, int Length)>? encodedRanges;
     private int offset;
 
-    internal CborReader(ReadOnlySpan<byte> bytes, bool captureTrace = false)
+    internal CborReader(ReadOnlySpan<byte> bytes, bool captureTrace = false, bool captureRanges = false)
     {
         this.bytes = bytes.ToArray();
         traceItems = captureTrace ? [] : null;
+        encodedRanges = captureRanges ? new(ReferenceEqualityComparer.Instance) : null;
     }
 
     internal bool IsComplete => offset == bytes.Length;
+
+    internal (int Offset, int Length) GetEncodedRange(object value) =>
+        encodedRanges is not null && encodedRanges.TryGetValue(value, out var range)
+            ? range
+            : throw new InvalidOperationException("The CBOR value has no captured encoded range.");
 
     internal object? ReadValue(int depth)
     {
@@ -50,6 +57,10 @@ internal sealed class CborReader
                 _ => throw new InvalidDataException("CBOR uses an unsupported major type."),
             };
             CaptureTrace(itemOffset, majorType, additionalInformation, value, error: null);
+            if (value is string or byte[])
+            {
+                encodedRanges?.TryAdd(value, (itemOffset, offset - itemOffset));
+            }
             return value;
         }
         catch (Exception exception) when (exception is InvalidDataException or OverflowException)

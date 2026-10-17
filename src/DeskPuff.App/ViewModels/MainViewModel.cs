@@ -9,7 +9,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
-using DeskPuff.App.Devices;
 using DeskPuff.App.Infrastructure;
 using DeskPuff.Core.Devices;
 using DeskPuff.Core.Diagnostics;
@@ -395,7 +394,6 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private readonly SessionController controller;
     private readonly IDiagnosticLog diagnosticLog;
-    private readonly ISessionOverrideClient? sessionOverrides;
     private readonly LocalProfileLibrary profileLibrary;
     private readonly bool demoMode;
     private readonly List<AsyncRelayCommand> asyncCommands = [];
@@ -445,12 +443,10 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         SessionController controller,
         bool demoMode,
         string? profileLibraryRoot = null,
-        ISessionOverrideClient? sessionOverrides = null,
         IDiagnosticLog? diagnostics = null)
     {
         this.controller = controller;
         diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
-        this.sessionOverrides = sessionOverrides;
         this.demoMode = demoMode;
         profileLibrary = new LocalProfileLibrary(
             profileLibraryRoot ?? (demoMode
@@ -1596,13 +1592,13 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 $"{saved.Name} is above the 600 F ceiling for a session.");
         }
 
-        if (sessionOverrides is null)
+        if (!controller.SupportsSessionOverrides)
         {
             throw new DeviceSafetyException(
                 "Running a saved profile awaits hardware validation for this firmware.");
         }
 
-        await sessionOverrides.ApplySessionOverrideAsync(
+        await controller.ApplySessionOverrideAsync(
             new SessionOverride(
                 saved.Name,
                 profile.TargetTemperatureCelsius,
@@ -1615,12 +1611,12 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task ClearSessionOverrideAsync(CancellationToken cancellationToken)
     {
-        if (sessionOverrides is null)
+        if (!controller.SupportsSessionOverrides)
         {
             return;
         }
 
-        await sessionOverrides.ClearSessionOverrideAsync(cancellationToken);
+        await controller.ClearSessionOverrideAsync(cancellationToken);
         ApplySnapshot(controller.Snapshot);
     }
 
@@ -2177,8 +2173,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         HeatingProfileOption savedProfile = SelectedSavedHeatingProfile ??
             throw new InvalidOperationException("Select a local heating profile first.");
-        LoadEditorFromSavedProfile(savedProfile, BuildSavedHeatProfile(savedProfile));
-        StatusText = $"Loaded {savedProfile.Name} with {savedProfile.ColorProfileName} • Save Profile writes it to the selected slot";
+        SelectSavedProfile(savedProfile);
+        CurrentPage = AppPage.Home;
+        StatusText = $"Selected {savedProfile.Name} • press Start to run it for this session";
         return Task.CompletedTask;
     }
 

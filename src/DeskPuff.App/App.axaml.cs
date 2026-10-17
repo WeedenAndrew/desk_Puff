@@ -33,12 +33,12 @@ public sealed partial class App : Application
             IDeviceClient client = demoMode
                 ? new DemoDeviceClient()
                 : new LoraxDeviceClient(diagnosticLog, traceWrites);
-            SessionController controller = new(client, new DeviceSafetyPolicy(), diagnosticLog);
+            SessionController controller = new(client, new DeviceSafetyPolicy(), diagnosticLog,
+                sessionOverrides: client as ISessionOverrideClient);
             MainViewModel viewModel = new(
                 controller,
                 demoMode,
                 profileLibraryRoot: null,
-                sessionOverrides: client as ISessionOverrideClient,
                 diagnostics: diagnosticLog);
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             desktop.MainWindow = new MainWindow(viewModel, diagnosticLog);

@@ -15,6 +15,7 @@ public enum DeviceAction
     BoostTime = 6,
     SetStealthMode = 7,
     SetLanternMode = 8,
+    ApplySessionOverride = 9,
 }
 
 public readonly record struct SafetyDecision(bool IsAllowed, string Reason)
@@ -90,6 +91,7 @@ public sealed class DeviceSafetyPolicy
                 ? SafetyDecision.Deny("Profiles cannot change during a heat cycle.")
                 : SafetyDecision.Allow(),
             DeviceAction.SetStealthMode or DeviceAction.SetLanternMode => SafetyDecision.Allow(),
+            DeviceAction.ApplySessionOverride => EvaluateSessionOverride(snapshot),
             _ => SafetyDecision.Deny("The requested operation is not allowlisted."),
         };
     }
@@ -115,18 +117,8 @@ public sealed class DeviceSafetyPolicy
             return SafetyDecision.Deny("Verified device limits are unavailable.");
         }
 
-        double minimumTemperature = Math.Max(
-            limits.MinimumTemperatureCelsius,
-            AbsoluteMinimumTemperatureCelsius);
-        double maximumTemperature = Math.Min(
-            limits.MaximumTemperatureCelsius,
-            AbsoluteMaximumTemperatureCelsius);
-        TimeSpan minimumDuration = limits.MinimumDuration > AbsoluteMinimumDuration
-            ? limits.MinimumDuration
-            : AbsoluteMinimumDuration;
-        TimeSpan maximumDuration = limits.MaximumDuration < AbsoluteMaximumDuration
-            ? limits.MaximumDuration
-            : AbsoluteMaximumDuration;
+        (double minimumTemperature, double maximumTemperature, TimeSpan minimumDuration, TimeSpan maximumDuration) =
+            GetConfigurationBounds(limits);
 
         if (profile.Index is < 0 or > 3)
         {
@@ -182,6 +174,65 @@ public sealed class DeviceSafetyPolicy
 
         return SafetyDecision.Allow();
     }
+
+    public SafetyDecision ValidateSessionOverride(SessionOverride sessionOverride, DeviceSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(sessionOverride);
+        SafetyDecision operation = Evaluate(DeviceAction.ApplySessionOverride, snapshot);
+        if (!operation.IsAllowed)
+        {
+            return operation;
+        }
+
+        // Evaluate requires sane device limits. Never substitute UI preference limits.
+        (double minimumTemperature, double maximumTemperature, TimeSpan minimumDuration, TimeSpan maximumDuration) =
+            GetConfigurationBounds(snapshot.Limits!);
+
+        // An override may be hotter than the active slot; only the shared envelope
+        // bounds it. Upward temperature is permitted by policy but unvalidated on
+        // hardware: every probe so far wrote downward. Green tests are not hardware evidence.
+        if (!double.IsFinite(sessionOverride.TargetTemperatureCelsius) ||
+            sessionOverride.TargetTemperatureCelsius < minimumTemperature ||
+            sessionOverride.TargetTemperatureCelsius > maximumTemperature)
+        {
+            return SafetyDecision.Deny("Session override temperature is outside verified safe limits.");
+        }
+
+        if (sessionOverride.Duration < minimumDuration || sessionOverride.Duration > maximumDuration)
+        {
+            return SafetyDecision.Deny("Session override duration is outside verified safe limits.");
+        }
+
+        // Deliberately stricter than profile-slot validation: even a 3DXL owner's
+        // XL profile is refused here although it is allowed in a slot. No session-scoped
+        // vapor path is known, and the client supplies Standard unconditionally rather
+        // than reading it. Revisit this asymmetry only when such a path is established.
+        if (sessionOverride.Vapor != VaporLevel.Standard)
+        {
+            return SafetyDecision.Deny("Session override vapor must be Standard; no session-scoped vapor control is known.");
+        }
+
+        // Colours are display-only: validate RGB format, not device palette size.
+        // No session-scoped colorway path is known; allowing these does not apply them.
+        if (sessionOverride.Colors is null ||
+            !sessionOverride.Colors.All(color => color is not null && IsColor(color)))
+        {
+            return SafetyDecision.Deny("Session override colours must be six-digit RGB values.");
+        }
+
+        // The name is local display text, never written; no device-side name check.
+        return SafetyDecision.Allow();
+    }
+
+    // Authoritative temperature/duration envelope for both slots and session overrides.
+    private static (double MinimumTemperature, double MaximumTemperature, TimeSpan MinimumDuration, TimeSpan MaximumDuration)
+        GetConfigurationBounds(DeviceLimits limits) =>
+        (
+            Math.Max(limits.MinimumTemperatureCelsius, AbsoluteMinimumTemperatureCelsius),
+            Math.Min(limits.MaximumTemperatureCelsius, AbsoluteMaximumTemperatureCelsius),
+            limits.MinimumDuration > AbsoluteMinimumDuration ? limits.MinimumDuration : AbsoluteMinimumDuration,
+            limits.MaximumDuration < AbsoluteMaximumDuration ? limits.MaximumDuration : AbsoluteMaximumDuration
+        );
 
     public SafetyDecision ValidateProfileSelection(int profileIndex, DeviceSnapshot snapshot)
     {
@@ -313,6 +364,18 @@ public sealed class DeviceSafetyPolicy
         return snapshot.SessionTotal + duration <= maximumDuration
             ? SafetyDecision.Allow()
             : SafetyDecision.Deny("The requested time increase would exceed the verified session limit.");
+    }
+
+    private static SafetyDecision EvaluateSessionOverride(DeviceSnapshot snapshot)
+    {
+        if (snapshot.Chamber is not (ChamberKind.Classic or ChamberKind.ThreeD or ChamberKind.ThreeDXL))
+        {
+            return SafetyDecision.Deny("A recognized chamber must be attached before applying a session override.");
+        }
+
+        return snapshot.OperatingState == DeviceOperatingState.Idle
+            ? SafetyDecision.Allow()
+            : SafetyDecision.Deny("Session overrides can be applied only from the idle state.");
     }
 
     private static SafetyDecision EvaluateStart(DeviceSnapshot snapshot)

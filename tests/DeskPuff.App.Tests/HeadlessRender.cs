@@ -84,12 +84,11 @@ internal static class HeadlessRender
             "desk-puff-render",
             Guid.NewGuid().ToString("N"));
         DemoDeviceClient client = new();
-        await using SessionController controller = new(client, new DeviceSafetyPolicy());
+        await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: client);
         await using MainViewModel viewModel = new(
             controller,
             demoMode: true,
-            profileLibraryRoot: library,
-            sessionOverrides: client);
+            profileLibraryRoot: library);
         MainWindow window = new(viewModel);
         window.Width = WindowWidth;
         window.Height = WindowHeight;

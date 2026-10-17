@@ -25,6 +25,17 @@ public sealed class LoraxDeviceClientTests
         "A1646C616D70A2646E616D65676D696772746E3165706172616DA165706174687380");
 
     [TestMethod]
+    public async Task HardwareSessionOverrideImplementation_IsAvailable()
+    {
+        // Deliberately inverted at the implementation gate: the contract move
+        // alone returned null; the hardware client now implements the contract.
+        await using IDeviceClient client = new LoraxDeviceClient(new FakeLoraxTransport());
+
+        Assert.IsNotNull(client as ISessionOverrideClient,
+            "The hardware override implementation must be available to the controller.");
+    }
+
+    [TestMethod]
     [DataRow(DeviceAction.BoostTemperature)]
     [DataRow(DeviceAction.BoostTime)]
     public async Task ActiveVerifiedPeakPro_FirstBoostWritesAndVerifiesCumulativeValue(DeviceAction action)

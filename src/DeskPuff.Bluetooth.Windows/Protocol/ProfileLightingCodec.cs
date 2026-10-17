@@ -26,6 +26,71 @@ internal static class ProfileLightingCodec
     // slots 0-3 on 2026-08-31. 4096 remains bounded headroom above the observed maximum, 799.
     private const int MaximumCborBytes = 4096;
 
+    // Do not reserialize unknown device fields: their wire types, precision and
+    // ordering can matter. Only equal-length payload edits are supported until
+    // animation/ramp generation and file truncation semantics are established.
+    internal static byte[] PrepareColorUpdate(ReadOnlySpan<byte> original, IReadOnlyList<string> colors)
+    {
+        _ = EncodeSolid(colors); // Validate the requested palette, never send this replacement document.
+        DecodedLighting decoded = DecodeLighting(original);
+        if (decoded.Colors.SequenceEqual(colors, StringComparer.OrdinalIgnoreCase))
+        {
+            return original.ToArray();
+        }
+
+        const string unsupported = "This device colorway cannot be edited safely. Keep its existing colors " +
+            "to change heating settings; color edits require an existing solid RGB palette with the same number of stops.";
+        CborReader reader = new(original, captureRanges: true);
+        if (reader.ReadValue(0) is not Dictionary<string, object?> root || !reader.IsComplete ||
+            !root.TryGetValue("lamp", out object? lampValue) || lampValue is not Dictionary<string, object?> lamp ||
+            !lamp.TryGetValue("name", out object? name) || name is not string program || program != "solid" ||
+            !TryGetInterpolatedColor(root, out object? colorValue) || colorValue is not byte[] rgb ||
+            rgb.Length != colors.Count * 3)
+        {
+            throw new InvalidDataException(unsupported);
+        }
+
+        byte[] result = original.ToArray();
+        var rgbRange = reader.GetEncodedRange(rgb);
+        int rgbOffset = rgbRange.Offset + rgbRange.Length - rgb.Length;
+        for (int index = 0; index < colors.Count; index++)
+        {
+            Convert.FromHexString(colors[index].AsSpan(1)).CopyTo(result, rgbOffset + (index * 3));
+        }
+
+        if (root.TryGetValue("meta", out object? metadataValue))
+        {
+            if (metadataValue is not Dictionary<string, object?> metadata)
+            {
+                throw new InvalidDataException(unsupported);
+            }
+
+            if (metadata.TryGetValue("userColors", out object? userColorsValue))
+            {
+                if (userColorsValue is not List<object?> userColors || userColors.Count != colors.Count ||
+                    !TryDecodeUserColors(root, out IReadOnlyList<string> anchors))
+                {
+                    throw new InvalidDataException(unsupported);
+                }
+
+                for (int index = 0; index < colors.Count; index++)
+                {
+                    string existingRgb = $"#{rgb[index * 3]:X2}{rgb[(index * 3) + 1]:X2}{rgb[(index * 3) + 2]:X2}";
+                    if (!string.Equals(existingRgb, anchors[index], StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidDataException(unsupported);
+                    }
+
+                    string existing = (string)userColors[index]!;
+                    var range = reader.GetEncodedRange(existing);
+                    Encoding.ASCII.GetBytes(colors[index]).CopyTo(result, range.Offset + range.Length - 7);
+                }
+            }
+        }
+
+        return result;
+    }
+
     internal static byte[] EncodeSolid(IReadOnlyList<string> colors)
     {
         ArgumentNullException.ThrowIfNull(colors);

@@ -19,6 +19,12 @@ internal enum DeviceModeCommand : byte
     AbortHeatCycle = 8,
 }
 
+internal enum LoraxWriteContext
+{
+    Normal,
+    ThcParameters,
+}
+
 internal readonly record struct LoraxReply(
     ushort Sequence,
     byte Status,
@@ -76,9 +82,21 @@ internal static class LoraxProtocol
         ushort offset,
         byte flags,
         ReadOnlySpan<byte> value)
+        => BuildWriteBody(LoraxWriteContext.Normal, path, offset, flags, value);
+
+    internal static byte[] BuildWriteBody(
+        LoraxWriteContext context,
+        string path,
+        ushort offset,
+        byte flags,
+        ReadOnlySpan<byte> value)
     {
         ValidatePath(path);
-        if (!LoraxPaths.IsWriteAllowed(path))
+        // Explicit permission for these two THC parameters, shared by diagnostics and
+        // validated session overrides. The ordinary allowlist is never mutated.
+        bool thcParameterPath = context == LoraxWriteContext.ThcParameters &&
+            path is LoraxPaths.ActiveProfileTemperature or LoraxPaths.ActiveProfileTime;
+        if (!LoraxPaths.IsWriteAllowed(path) && !thcParameterPath)
         {
             throw new DeviceWriteBlockedException($"The Lorax path '{path}' is not allowlisted for writes.");
         }
