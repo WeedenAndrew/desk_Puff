@@ -309,7 +309,7 @@ public sealed class LocalProfileLibrary(string rootPath, IDiagnosticLog? diagnos
         profile.BoostTemperatureCelsius is >= 0 and <= 30 &&
         double.IsFinite(profile.BoostDurationSeconds) &&
         profile.BoostDurationSeconds is >= 0 and <= 120 &&
-        IsColors(profile.Colors, maximumCount: 4);
+        IsColors(profile.Colors, MaximumLocalColorCount);
 
     private static bool IsName(string name) =>
         !string.IsNullOrWhiteSpace(name) &&

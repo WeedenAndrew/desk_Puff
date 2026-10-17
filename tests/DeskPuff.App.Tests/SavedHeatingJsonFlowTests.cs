@@ -93,6 +93,95 @@ public sealed class SavedHeatingJsonFlowTests
         Assert.IsFalse(viewModel.StatusIsError, viewModel.StatusText);
     }
 
+    [TestMethod]
+    [DataRow(5)]
+    [DataRow(25)]
+    [DataRow(32)]
+    public async Task SaveHeatingJson_FromLongDevicePalette_CreatesReloadsAndRunsWithoutSlotWrite(int stopCount)
+    {
+        string[] colors = Enumerable.Range(0, stopCount).Select(index => $"#{index + 1:X6}").ToArray();
+        FakeDeviceClient client = new();
+        HeatProfile[] profiles = FakeDeviceClient.DefaultProfiles().ToArray();
+        profiles[0] = profiles[0] with { ColorHex = colors[0], ColorPalette = colors, HasDeviceColor = true };
+        client.SetProfiles(profiles);
+        RecordingOverrides overrides = new();
+        await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
+        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await viewModel.InitializeAsync();
+        viewModel.ShowProfilesCommand.Execute(null);
+        viewModel.HeatingProfileName = "Created from device";
+
+        Assert.IsTrue(viewModel.SaveHeatingProfileCommand.CanExecute(null),
+            "A local JSON save must not inherit the device-write four-color limit.");
+        Assert.IsFalse(viewModel.SaveProfileCommand.CanExecute(null), "Device write limits must remain unchanged.");
+        await ExecuteAsync(viewModel, viewModel.SaveHeatingProfileCommand);
+
+        LocalProfileLibrary library = new(rootPath);
+        IReadOnlyList<StoredLocalProfile<LocalHeatingProfile>> saved = await library.LoadHeatingAsync(CancellationToken.None);
+        Assert.HasCount(1, saved);
+        CollectionAssert.AreEqual(colors, saved[0].Profile.Colors);
+        Assert.AreEqual(0, client.TotalStateChangingCalls);
+        await ExecuteAsync(viewModel, viewModel.ReloadLocalProfilesCommand);
+        Assert.HasCount(1, viewModel.SavedHeatingProfiles);
+        await ExecuteAsync(viewModel, viewModel.ApplyHeatingProfileCommand);
+        await ExecuteAsync(viewModel, viewModel.StartStopCommand);
+        Assert.HasCount(1, overrides.Applied);
+        CollectionAssert.AreEqual(colors, overrides.Applied[0].Colors.ToArray());
+        Assert.AreEqual(0, client.UpdateProfileCallCount);
+        Assert.AreEqual(1, client.StartCallCount);
+    }
+
+    [TestMethod]
+    public async Task DisconnectedDraft_CreatesBothJsonKindsAndRefreshesDisabledSaveAfterFieldEdits()
+    {
+        FakeDeviceClient client = new();
+        await client.DisconnectAsync(CancellationToken.None);
+        await using SessionController controller = new(client, new DeviceSafetyPolicy());
+        await using MainViewModel viewModel = new(controller, demoMode: false, rootPath);
+        await viewModel.InitializeAsync();
+        Assert.IsFalse(viewModel.IsConnected);
+        Assert.IsTrue(viewModel.ShowProfilesCommand.CanExecute(null));
+        viewModel.ShowProfilesCommand.Execute(null);
+        Assert.IsTrue(viewModel.ProfilesVisibility);
+        Assert.IsFalse(viewModel.ConnectionVisibility);
+        viewModel.NewHeatingProfileCommand.Execute(null);
+        int commandChanges = 0;
+        viewModel.SaveHeatingProfileCommand.CanExecuteChanged += (_, _) => commandChanges++;
+        viewModel.HeatingProfileName = " ";
+        Assert.IsFalse(viewModel.SaveHeatingProfileCommand.CanExecute(null));
+        StringAssert.Contains(viewModel.HeatingSaveValidation, "name");
+        viewModel.HeatingProfileName = "Offline heat";
+        viewModel.EditorDurationSeconds = 121;
+        Assert.IsFalse(viewModel.SaveHeatingProfileCommand.CanExecute(null));
+        StringAssert.Contains(viewModel.HeatingSaveValidation, "duration");
+        viewModel.EditorDurationSeconds = 60;
+        viewModel.EditorTemperature = double.NaN;
+        Assert.IsFalse(viewModel.SaveHeatingProfileCommand.CanExecute(null));
+        viewModel.EditorTemperature = viewModel.UseFahrenheit ? 500 : 260;
+        Assert.IsTrue(commandChanges >= 5);
+        await ExecuteAsync(viewModel, viewModel.SaveHeatingProfileCommand);
+        Assert.IsFalse(viewModel.SaveProfileCommand.CanExecute(null));
+        Assert.IsFalse(viewModel.ApplyHeatingProfileCommand.CanExecute(null));
+        viewModel.NewHeatingProfileCommand.Execute(null);
+        Assert.IsFalse(viewModel.EditHeatingProfileCommand.CanExecute(null));
+        // NEW deselects the saved item; selecting the library entry makes editing available.
+        viewModel.SelectedSavedHeatingProfile = viewModel.SavedHeatingProfiles[0];
+        viewModel.EditHeatingProfileCommand.Execute(null);
+        Assert.AreEqual("Offline heat", viewModel.HeatingProfileName);
+        viewModel.ShowColorCommand.Execute(null);
+        Assert.IsTrue(viewModel.ColorVisibility);
+        viewModel.PaletteName = "";
+        Assert.IsFalse(viewModel.SaveColorPaletteCommand.CanExecute(null));
+        viewModel.PaletteName = "Offline colors";
+        await ExecuteAsync(viewModel, viewModel.SaveColorPaletteCommand);
+        viewModel.UseColorWithHeatingProfileCommand.Execute(null);
+        Assert.IsTrue(viewModel.ProfilesVisibility);
+        LocalProfileLibrary library = new(rootPath);
+        Assert.HasCount(1, await library.LoadHeatingAsync(CancellationToken.None));
+        Assert.HasCount(1, await library.LoadColorsAsync(CancellationToken.None));
+        Assert.AreEqual(0, client.TotalStateChangingCalls);
+    }
+
     private sealed class RecordingOverrides : ISessionOverrideClient
     {
         public List<SessionOverride> Applied { get; } = [];

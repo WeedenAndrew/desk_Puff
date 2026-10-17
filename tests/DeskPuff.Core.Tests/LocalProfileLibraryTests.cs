@@ -69,17 +69,26 @@ public sealed class LocalProfileLibraryTests
     }
 
     [TestMethod]
-    public async Task HeatingProfile_FiveColorsRemainsRejectedByWriteShapedValidation()
+    public async Task HeatingProfile_LongDisplayPaletteRoundTripsWithoutDeviceWriteLimits()
     {
         LocalHeatingProfile profile = SafeHeatingProfile() with
         {
             Colors = ["#000000", "#111111", "#222222", "#333333", "#444444"],
         };
 
-        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => library.SaveHeatingAsync(
+        await library.SaveHeatingAsync(
             profile,
             existingFileName: null,
-            CancellationToken.None));
+            CancellationToken.None);
+        IReadOnlyList<StoredLocalProfile<LocalHeatingProfile>> loaded = await library.LoadHeatingAsync(CancellationToken.None);
+        CollectionAssert.AreEqual(profile.Colors, loaded[0].Profile.Colors);
+    }
+
+    [TestMethod]
+    public async Task HeatingProfile_MoreThan32ColorsRemainsRejected()
+    {
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => library.SaveHeatingAsync(
+            SafeHeatingProfile() with { Colors = Enumerable.Repeat("#112233", 33).ToArray() }, null, CancellationToken.None));
     }
 
     [TestMethod]

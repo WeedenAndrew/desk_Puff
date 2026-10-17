@@ -46,6 +46,11 @@ produced.
 | ![The Profiles page](docs/media/profiles.png) | ![The Color page](docs/media/color.png) | ![The Settings page](docs/media/settings.png) |
 
 Profiles come in two kinds. The device's four slots behave as they always have.
+The Profiles and Colors pages also work without a connection: choose **NEW**,
+name a heat profile, edit its settings and choose **SAVE HEAT JSON**. Save
+validation appears beside the draft; **LOAD TO EDIT** opens an existing file.
+Local heating and color JSON retain up to 32 display color stops. Device-slot
+writes keep their separate one-to-four-stop limit.
 Saved local profiles are JSON files that apply their parameters to a **single
 session**. Their temporary session settings are dropped when it ends; selecting one writes nothing to a slot,
 and the display says **SAVED PROFILE • NOT ON DEVICE** so it can never be

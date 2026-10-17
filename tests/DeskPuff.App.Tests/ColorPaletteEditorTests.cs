@@ -76,7 +76,7 @@ public sealed class ColorPaletteEditorTests
             viewModel.NextColorStopCommand.Execute(null);
             Assert.AreEqual("#123456", viewModel.WheelColor);
             Assert.IsFalse(viewModel.SaveProfileCommand.CanExecute(null));
-            Assert.IsFalse(viewModel.SaveHeatingProfileCommand.CanExecute(null));
+            Assert.IsTrue(viewModel.SaveHeatingProfileCommand.CanExecute(null));
             Assert.AreEqual(0, client.TotalStateChangingCalls);
             return true;
         });

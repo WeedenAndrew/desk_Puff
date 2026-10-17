@@ -409,7 +409,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private AppPage currentPage;
     private string statusText = "Ready to scan";
     private bool statusIsError;
-    private string editorName = string.Empty;
+    private string editorName = "New heat profile";
     private double editorTemperature = 500;
     private double editorDurationSeconds = 40;
     private VaporLevel editorVapor;
@@ -418,11 +418,11 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly List<string> editorColors = ["#0000FF"];
     private string appAccentHex = DefaultAppAccentHex;
     private string appBackgroundHex = DefaultAppBackgroundHex;
-    private string paletteName = string.Empty;
+    private string paletteName = "New colors";
     private ColorPaletteOption? selectedSavedColorPalette;
     private DeviceProfileOption? selectedDeviceProfile;
     private int requestedSelectionIndex = -1;
-    private string heatingProfileName = string.Empty;
+    private string heatingProfileName = "New heat profile";
     private HeatingProfileOption? selectedSavedHeatingProfile;
     private HeatingProfileOption? savedProfileSelection;
     private int selectedColorStopIndex;
@@ -496,19 +496,21 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         SaveProfileCommand = CreateAsync(
             SaveProfileAsync,
             () => CanEditDevice && profiles.Count > 0 && EditorPaletteCanBeWritten);
-        SaveColorPaletteCommand = CreateAsync(SaveColorPaletteAsync, () => IsConnected);
+        SaveColorPaletteCommand = CreateAsync(SaveColorPaletteAsync, () => ColorSaveValidation.Length == 0);
         DeleteColorPaletteCommand = CreateAsync(
             DeleteColorPaletteAsync,
             () => SelectedSavedColorPalette is not null);
         SaveHeatingProfileCommand = CreateAsync(
             SaveHeatingProfileAsync,
-            () => IsConnected && profiles.Count > 0 && EditorPaletteCanBeWritten);
+            () => HeatingSaveValidation.Length == 0);
+        NewHeatingProfileCommand = CreateRelay(NewHeatingProfile);
+        EditHeatingProfileCommand = CreateRelay(EditSelectedHeatingProfile, () => SelectedSavedHeatingProfile is not null);
         DeleteHeatingProfileCommand = CreateAsync(
             DeleteHeatingProfileAsync,
             () => SelectedSavedHeatingProfile is not null);
         ReloadLocalProfilesCommand = CreateAsync(
             ReloadLocalProfilesAsync,
-            () => IsConnected);
+            () => true);
         ToggleStealthCommand = CreateAsync(ToggleStealthAsync, () => CanEditDevice);
         ToggleLanternCommand = CreateAsync(ToggleLanternAsync, () => CanEditDevice);
         SavePreferencesCommand = CreateAsync(SavePreferencesAsync);
@@ -517,9 +519,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             HotSwapConnectAsync,
             () => CanHotSwap && SelectedHotSwapCandidate is not null);
 
-        ShowHomeCommand = CreateRelay(() => CurrentPage = AppPage.Home, () => IsConnected);
-        ShowProfilesCommand = CreateRelay(() => CurrentPage = AppPage.Profiles, () => IsConnected);
-        ShowColorCommand = CreateRelay(() => CurrentPage = AppPage.Color, () => IsConnected);
+        ShowHomeCommand = CreateRelay(() => CurrentPage = AppPage.Home);
+        ShowProfilesCommand = CreateRelay(() => CurrentPage = AppPage.Profiles);
+        ShowColorCommand = CreateRelay(() => CurrentPage = AppPage.Color);
         ShowSettingsCommand = CreateRelay(() => CurrentPage = AppPage.Settings, () => IsConnected);
         ApplyColorPaletteCommand = CreateRelay(
             ApplySelectedColorPalette,
@@ -529,7 +531,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             () => SelectedSavedHeatingProfile is not null && IsConnected && profiles.Count > 0);
         UseColorWithHeatingProfileCommand = CreateRelay(
             UseColorWithHeatingProfile,
-            () => IsConnected && profiles.Count > 0);
+            () => true);
         PreviousColorStopCommand = CreateRelay(
             () => SelectRelativeColorStop(-1),
             () => CurrentPage == AppPage.Color && EditorPaletteColors().Length > 1);
@@ -647,6 +649,10 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public ICommand DeleteColorPaletteCommand { get; }
 
     public ICommand SaveHeatingProfileCommand { get; }
+
+    public ICommand NewHeatingProfileCommand { get; }
+
+    public ICommand EditHeatingProfileCommand { get; }
 
     public ICommand ApplyHeatingProfileCommand { get; }
 
@@ -865,6 +871,67 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         set => SetProperty(ref heatingProfileName, value);
     }
 
+    public string HeatingSaveValidation
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(HeatingProfileName) || HeatingProfileName.Trim().Length > 64 || HeatingProfileName.Any(char.IsControl))
+            {
+                return "Enter a profile name (1–64 characters).";
+            }
+
+            try
+            {
+                return ValidateLocalHeatingConfiguration(BuildEditorProfile(), PreferenceFallbackLimits, ChamberKind.ThreeDXL).Reason;
+            }
+            catch (Exception exception) when (exception is ArgumentException or OverflowException)
+            {
+                return "Enter valid finite numbers for temperature, time and boosts.";
+            }
+        }
+    }
+
+    public string ColorSaveValidation =>
+        string.IsNullOrWhiteSpace(PaletteName) || PaletteName.Trim().Length > 64 || PaletteName.Any(char.IsControl)
+            ? "Enter a colorway name (1–64 characters)." : string.Empty;
+
+    public string LocalProfileHint => $"{editorColors.Count} color stops • stored locally; live session colors stay on the device.";
+
+    private void NotifyLocalDraftProperties()
+    {
+        OnPropertyChanged(nameof(HeatingSaveValidation));
+        OnPropertyChanged(nameof(ColorSaveValidation));
+        OnPropertyChanged(nameof(LocalProfileHint));
+        NotifyCommandStates();
+    }
+
+    private void NewHeatingProfile()
+    {
+        string name = "New heat profile";
+        for (int suffix = 2; SavedHeatingProfiles.Any(profile => string.Equals(profile.Name, name, StringComparison.OrdinalIgnoreCase)); suffix++)
+        {
+            name = $"New heat profile {suffix}";
+        }
+
+        EditorName = name;
+        HeatingProfileName = name;
+        EditorTemperature = ToDisplayTemperature(260);
+        EditorDurationSeconds = 40;
+        EditorVapor = VaporLevel.Standard;
+        EditorBoostTemperature = ToDisplayTemperatureDelta(5);
+        EditorBoostSeconds = 10;
+        SelectedSavedHeatingProfile = null;
+        CurrentPage = AppPage.Profiles;
+        StatusText = "New local draft • name it and save JSON";
+    }
+
+    private void EditSelectedHeatingProfile()
+    {
+        HeatingProfileOption saved = SelectedSavedHeatingProfile!;
+        LoadEditorFromSavedProfile(saved, BuildSavedHeatProfile(saved, validateForDevice: false));
+        StatusText = $"Editing {saved.Name} • save JSON to keep changes";
+    }
+
     public HeatingProfileOption? SelectedSavedHeatingProfile
     {
         get => selectedSavedHeatingProfile;
@@ -1017,15 +1084,15 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public bool CanHotSwap => DeviceHandoffPolicy.EvaluateSource(snapshot).IsAllowed;
 
-    public bool ConnectionVisibility => IsDisconnected;
+    public bool ConnectionVisibility => IsDisconnected && CurrentPage == AppPage.Home;
 
     public bool DeviceVisibility => IsConnected;
 
     public bool HomeVisibility => PageVisibility(AppPage.Home);
 
-    public bool ProfilesVisibility => PageVisibility(AppPage.Profiles);
+    public bool ProfilesVisibility => CurrentPage == AppPage.Profiles;
 
-    public bool ColorVisibility => PageVisibility(AppPage.Color);
+    public bool ColorVisibility => CurrentPage == AppPage.Color;
 
     public bool SettingsVisibility => PageVisibility(AppPage.Settings);
 
@@ -1913,7 +1980,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             {
                 ColorPalette = saved.Colors,
             };
-            if (!DeviceSafetyPolicy.ValidateProfileConfiguration(
+            if (!ValidateLocalHeatingConfiguration(
                     candidate,
                     PreferenceFallbackLimits,
                     ChamberKind.ThreeDXL).IsAllowed)
@@ -2106,10 +2173,10 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
 
         HeatProfile editorProfile = BuildEditorProfile();
-        DeviceSafetyPolicy.ValidateProfileConfiguration(
+        ValidateLocalHeatingConfiguration(
             editorProfile,
-            snapshot.Limits ?? PreferenceFallbackLimits,
-            snapshot.Chamber).ThrowIfDenied();
+            PreferenceFallbackLimits,
+            ChamberKind.ThreeDXL).ThrowIfDenied();
 
         string[] colors = editorProfile.ColorPalette.ToArray();
         ColorPaletteOption? linkedPalette = SavedColorPalettes.FirstOrDefault(
@@ -2179,7 +2246,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    private HeatProfile BuildSavedHeatProfile(HeatingProfileOption savedProfile)
+    private HeatProfile BuildSavedHeatProfile(HeatingProfileOption savedProfile, bool validateForDevice = true)
     {
         HeatProfile profile = new(
             snapshot.ActiveProfileIndex,
@@ -2193,10 +2260,10 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             ColorPalette = savedProfile.Colors,
         };
-        DeviceSafetyPolicy.ValidateProfileConfiguration(
+        ValidateLocalHeatingConfiguration(
             profile,
-            snapshot.Limits ?? PreferenceFallbackLimits,
-            snapshot.Chamber).ThrowIfDenied();
+            validateForDevice ? snapshot.Limits ?? PreferenceFallbackLimits : PreferenceFallbackLimits,
+            validateForDevice ? snapshot.Chamber : ChamberKind.ThreeDXL).ThrowIfDenied();
         return profile;
     }
 
@@ -2233,9 +2300,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private void UseColorWithHeatingProfile()
     {
         string[] colors = EditorPaletteColors();
-        if (colors.Length is < 1 or > 4 || colors.Any(color => !IsHexColor(color)))
+        if (colors.Length is < 1 or > MaximumLocalPaletteColorCount || colors.Any(color => !IsHexColor(color)))
         {
-            StatusText = "Enter one to four valid six-digit RGB colors before returning to Profiles";
+            StatusText = "Enter one to 32 valid six-digit RGB colors before returning to Profiles";
             return;
         }
 
@@ -2540,6 +2607,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void NotifyPageProperties()
     {
+        OnPropertyChanged(nameof(ConnectionVisibility));
         OnPropertyChanged(nameof(HomeVisibility));
         OnPropertyChanged(nameof(ProfilesVisibility));
         OnPropertyChanged(nameof(ColorVisibility));
@@ -2684,9 +2752,24 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private bool EditorPaletteCanBeWritten => editorColors.Count is >= 1 and <= 4;
 
+    private static SafetyDecision ValidateLocalHeatingConfiguration(HeatProfile profile, DeviceLimits limits, ChamberKind chamber)
+    {
+        if (profile.ColorPalette.Count is < 1 or > MaximumLocalPaletteColorCount || !profile.ColorPalette.All(IsHexColor) ||
+            !string.Equals(profile.ColorHex, profile.ColorPalette[0], StringComparison.OrdinalIgnoreCase))
+        {
+            return SafetyDecision.Deny("Local profiles require one to 32 six-digit RGB colors.");
+        }
+
+        // Display-only local colors may have more stops than a device slot.
+        // Validate heating fields with the existing envelope without discarding
+        // the stored palette. Actual device writes retain their original gate.
+        return DeviceSafetyPolicy.ValidateProfileConfiguration(profile with { ColorPalette = [profile.ColorHex] }, limits, chamber);
+    }
+
     private HeatProfile BuildEditorProfile()
     {
-        HeatProfile current = profiles.Single(profile => profile.Index == snapshot.ActiveProfileIndex);
+        HeatProfile current = profiles.FirstOrDefault(profile => profile.Index == snapshot.ActiveProfileIndex)
+            ?? new(0, EditorName, 260, TimeSpan.FromSeconds(40), VaporLevel.Standard, 5, TimeSpan.FromSeconds(10), "#0000FF");
         string[] colorPalette = EditorPaletteColors();
         return current with
         {
@@ -2809,6 +2892,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(CurrentColorProfileName));
         OnPropertyChanged(nameof(ColorPageContextText));
         OnPropertyChanged(nameof(EditorPaletteForegroundDisplay));
+        NotifyLocalDraftProperties();
         NotifyCommandStates();
     }
 
@@ -2995,6 +3079,12 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         field = value;
         OnPropertyChanged(propertyName);
+        if (propertyName is nameof(EditorName) or nameof(HeatingProfileName) or nameof(PaletteName) or
+            nameof(EditorTemperature) or nameof(EditorDurationSeconds) or nameof(EditorBoostTemperature) or
+            nameof(EditorBoostSeconds) or nameof(EditorVapor))
+        {
+            NotifyLocalDraftProperties();
+        }
         return true;
     }
 

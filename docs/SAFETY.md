@@ -17,7 +17,7 @@ The device firmware remains authoritative for heater control.
 - Heating is never scheduled, resumed, or initiated in the background.
 - Profile switching and editing are disabled during heating.
 - Local color and heating presets are separate, size-bounded JSON documents.
-  Heating presets store only bounded heating values and one-to-four inline RGB
+  Heating presets store only bounded heating values and one-to-32 display-only RGB
   colors. Saving, refreshing, or loading a local file never selects a device
   profile, starts heat, or sends Bluetooth data; the separate device-write
   action revalidates the entire pair against current hardware state and limits.

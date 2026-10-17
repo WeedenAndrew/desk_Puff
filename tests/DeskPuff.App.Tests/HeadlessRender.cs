@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using DeskPuff.App.Devices;
 using DeskPuff.App.ViewModels;
@@ -75,7 +76,8 @@ internal static class HeadlessRender
     /// </summary>
     internal static async Task<RenderedFrame> CaptureAsync(
         string name,
-        Func<MainViewModel, Task>? drive = null)
+        Func<MainViewModel, Task>? drive = null,
+        Action<MainWindow>? inspect = null)
     {
         // An empty library of its own, not the machine's demo profiles: a
         // capture that changes with whatever someone saved last is not a test.
@@ -107,9 +109,20 @@ internal static class HeadlessRender
                 await SettleAsync(window, () => true);
             }
 
+            inspect?.Invoke(window);
             WriteableBitmap? frame = window.CaptureRenderedFrame();
             Assert.IsNotNull(frame, $"The headless renderer produced no frame for {name}.");
-            return new RenderedFrame(name, frame);
+            // CaptureRenderedFrame can retain only the damaged region with
+            // cached composition layers. Render the complete arranged tree so
+            // persistent title/navigation controls are included consistently.
+            using RenderTargetBitmap complete = new(new PixelSize(WindowWidth, WindowHeight), new Vector(96, 96));
+            complete.Render(window);
+            WriteableBitmap bitmap = new(new PixelSize(WindowWidth, WindowHeight), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+            using (ILockedFramebuffer buffer = bitmap.Lock())
+            {
+                complete.CopyPixels(new PixelRect(0, 0, WindowWidth, WindowHeight), buffer.Address, buffer.RowBytes * WindowHeight, buffer.RowBytes);
+            }
+            return new RenderedFrame(name, bitmap);
         }
         finally
         {

@@ -593,495 +593,141 @@
           </Grid>
         </Grid>
 
-        <ScrollViewer IsVisible="{Binding ProfilesVisibility}"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      Margin="0,8,0,12">
-          <StackPanel Margin="28,0,28,0">
-            <TextBlock Text="PROFILES"
-                       FontSize="19"
-                       FontWeight="SemiBold"
-                       TextAlignment="Center" />
-            <TextBlock Text="Build and edit your own profiles. Slots are chosen from Home."
-                       Foreground="{DynamicResource MutedBrush}"
-                       FontSize="10"
-                       TextAlignment="Center"
-                       TextWrapping="Wrap"
-                       Margin="0,5,0,12" />
-
-            <Grid Width="140"
-                  Height="140"
-                  Margin="0,0,0,12"
-                  HorizontalAlignment="Center">
-                <Viewbox Width="136" Height="136">
-                  <Canvas Width="226" Height="226">
-                    <Ellipse Width="226"
-                             Height="226"
-                             Fill="{DynamicResource ScrollBarBrush}"
-                             Stroke="{Binding EditorPrimaryColor}"
-                             StrokeThickness="3" />
-                    <Path Data="M 113,3 A 110,110 0 0 1 223,113"
-                          Stroke="{Binding EditorProfileArcOne}"
-                          StrokeThickness="5"
-                          StrokeLineCap="Round" />
-                    <Path Data="M 223,113 A 110,110 0 0 1 113,223"
-                          Stroke="{Binding EditorProfileArcTwo}"
-                          StrokeThickness="5"
-                          StrokeLineCap="Round" />
-                    <Path Data="M 113,223 A 110,110 0 0 1 3,113"
-                          Stroke="{Binding EditorProfileArcThree}"
-                          StrokeThickness="5"
-                          StrokeLineCap="Round" />
-                    <Path Data="M 3,113 A 110,110 0 0 1 113,3"
-                          Stroke="{Binding EditorProfileArcFour}"
-                          StrokeThickness="5"
-                          StrokeLineCap="Round" />
-                    <Ellipse Width="202"
-                             Height="202"
-                             Canvas.Left="12"
-                             Canvas.Top="12"
-                             Stroke="{Binding EditorPrimaryColor}"
-                             StrokeThickness="1"
-                             Opacity="0.25" />
-                  </Canvas>
-                </Viewbox>
-                <Grid Width="112" Height="118">
-                  <TextBox AutomationProperties.AutomationId="ProfileNameEditor"
-                           Text="{Binding EditorName, UpdateSourceTrigger=PropertyChanged}"
-                           MaxLength="31"
-                           Width="100"
-                           Height="24"
-                           Padding="0"
-                           Background="Transparent"
-                           BorderThickness="0"
-                           Foreground="{Binding EditorPaletteForegroundDisplay}"
-                           FontSize="10"
-                           FontWeight="SemiBold"
-                           TextAlignment="Center"
-                           HorizontalContentAlignment="Center"
-                           VerticalContentAlignment="Center"
-                           VerticalAlignment="Top"
-                           Margin="0,11,0,0" />
-                  <StackPanel VerticalAlignment="Center" Margin="0,8,0,0">
-                    <TextBlock Text="{Binding EditorTemperature, StringFormat={}{0:0}°}"
-                               FontSize="25"
-                               FontWeight="Light"
-                               HorizontalAlignment="Center" />
-                    <TextBlock Text="{Binding TemperatureEditorLabel}"
-                               FontSize="6"
-                               Foreground="{DynamicResource MutedBrush}"
-                               HorizontalAlignment="Center"
-                               Margin="0,-3,0,2" />
-                    <TextBlock Text="{Binding EditorDurationSeconds, StringFormat={}{0:0} SEC}"
-                               FontSize="12"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center" />
+        <ScrollViewer x:Name="ProfilesScroll" IsVisible="{Binding ProfilesVisibility}"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,8,0,12">
+          <StackPanel Margin="24,0,24,12" Spacing="8">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Text="HEAT PROFILES" FontSize="19" FontWeight="SemiBold" />
+                <TextBlock Text="Create and save locally. No device needed." FontSize="10" Foreground="{DynamicResource MutedBrush}" />
+              </StackPanel>
+              <Button Grid.Column="1" Content="NEW" Command="{Binding NewHeatingProfileCommand}" Padding="14,7" />
+            </Grid>
+            <TextBlock Text="JSON PROFILE NAME" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
+            <Grid ColumnDefinitions="*,8,Auto">
+              <TextBox AutomationProperties.AutomationId="HeatingProfileNameEditor" Text="{Binding HeatingProfileName, UpdateSourceTrigger=PropertyChanged}" MaxLength="64" PlaceholderText="Name your heat profile" />
+              <Button Grid.Column="2" AutomationProperties.AutomationId="SaveHeatingProfileButton" Content="SAVE HEAT JSON" Command="{Binding SaveHeatingProfileCommand}"
+                      Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource AccentForegroundBrush}" BorderBrush="{DynamicResource AccentBrush}" Padding="12,7" />
+            </Grid>
+            <TextBlock AutomationProperties.AutomationId="HeatingSaveValidation" Text="{Binding HeatingSaveValidation}" Foreground="{DynamicResource DangerBrush}" FontSize="10" TextWrapping="Wrap" />
+            <Border Background="{DynamicResource PanelBrush}" CornerRadius="12" Padding="12">
+              <StackPanel Spacing="9">
+                <Grid ColumnDefinitions="*,12,*">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding TemperatureEditorLabel}" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
+                    <TextBox AutomationProperties.AutomationId="ProfileTemperatureEditor" Text="{Binding EditorTemperature, UpdateSourceTrigger=PropertyChanged}" />
                   </StackPanel>
-                  <TextBlock Text="{Binding ActiveProfilePositionText}"
-                             FontSize="6"
-                             Foreground="{DynamicResource MutedBrush}"
-                             HorizontalAlignment="Center"
-                             VerticalAlignment="Bottom"
-                             Margin="0,0,0,5" />
+                  <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Text="SESSION TIME SEC" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
+                    <TextBox AutomationProperties.AutomationId="ProfileDurationEditor" Text="{Binding EditorDurationSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                  </StackPanel>
                 </Grid>
-            </Grid>
-
-            <TextBlock Text="VAPOR LEVEL" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
-            <ComboBox ItemsSource="{Binding VaporLevels}"
-                      SelectedItem="{Binding EditorVapor}"
-                      ItemTemplate="{StaticResource DarkComboItemTemplate}"
-                      Margin="0,5,0,10" />
-
-            <Grid Margin="0,0,0,11">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0">
-                <TextBlock Text="{Binding TemperatureEditorLabel}" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
-                <TextBox AutomationProperties.AutomationId="ProfileTemperatureEditor"
-                         Text="{Binding EditorTemperature, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="0,5,0,0" />
-              </StackPanel>
-              <StackPanel Grid.Column="2">
-                <TextBlock Text="SESSION TIME SEC" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
-                <TextBox AutomationProperties.AutomationId="ProfileDurationEditor"
-                         Text="{Binding EditorDurationSeconds, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="0,5,0,0" />
-              </StackPanel>
-            </Grid>
-
-            <Grid Margin="0,0,0,11">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0">
-                <TextBlock Text="{Binding BoostEditorLabel}" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
-                <TextBox Text="{Binding EditorBoostTemperature, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="0,5,0,0" />
-              </StackPanel>
-              <StackPanel Grid.Column="2">
-                <TextBlock Text="TIME BOOST SEC" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
-                <TextBox Text="{Binding EditorBoostSeconds, UpdateSourceTrigger=PropertyChanged}"
-                         Margin="0,5,0,0" />
-              </StackPanel>
-            </Grid>
-
-            <Button AutomationProperties.AutomationId="ProfileColorSelectorButton"
-                    Command="{Binding ShowColorCommand}"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Padding="0"
-                    Margin="0,0,0,11"
-                    ToolTip.Tip="Open the color profile selector">
-              <Grid Width="385">
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto" />
-                  <RowDefinition Height="18" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="{Binding CurrentColorProfileName}"
-                           FontSize="9"
-                           FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis"
-                           HorizontalAlignment="Center"
-                           Margin="20,0,20,5" />
-                <TextBlock Text="›"
-                           FontSize="18"
-                           HorizontalAlignment="Right"
-                           VerticalAlignment="Top"
-                           Margin="0,-5,2,0" />
-                <Border Grid.Row="1"
-                        CornerRadius="9"
-                        Background="{Binding EditorPaletteBrush}" />
-              </Grid>
-            </Button>
-
-            <TextBlock Text="PROFILE MACRO"
-                       FontSize="9"
-                       Foreground="{DynamicResource MutedBrush}" />
-            <Grid Margin="0,5,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <ComboBox ItemsSource="{Binding ProfileMacroOptions}"
-                        ItemTemplate="{StaticResource ShortcutOptionTemplate}"
-                        SelectedValue="{Binding EditorProfileMacroKey}" />
-              <Button Grid.Column="2"
-                      Content="SAVE MACRO"
-                      Command="{Binding SavePreferencesCommand}"
-                      Padding="12,7" />
-            </Grid>
-            <TextBlock Text="Selects this profile from Home while idle; it never starts heat."
-                       Foreground="{DynamicResource MutedBrush}"
-                       FontSize="8"
-                       TextWrapping="Wrap"
-                       Margin="0,5,0,10" />
-
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="2*" />
-              </Grid.ColumnDefinitions>
-              <Button AutomationProperties.AutomationId="QuickSaveHeatingProfileButton"
-                      Content="SAVE HEAT JSON"
-                      Command="{Binding SaveHeatingProfileCommand}"
-                      Background="{DynamicResource AccentBrush}"
-                      Foreground="{DynamicResource AccentForegroundBrush}"
-                      BorderBrush="{DynamicResource AccentBrush}" />
-              <Button Grid.Column="2"
-                      Content="WRITE PROFILE"
-                      Command="{Binding SaveProfileCommand}" />
-            </Grid>
-            <TextBlock Text="Local saves never heat or write; Write Profile remains firmware-gated."
-                       Foreground="{DynamicResource MutedBrush}"
-                       FontSize="9"
-                       TextAlignment="Center"
-                       TextWrapping="Wrap"
-                       Margin="12,10,12,0" />
-
-            <Grid Margin="0,18,0,0">
-              <TextBlock Text="LOCAL PAIRED PROFILES"
-                         FontSize="9"
-                         Foreground="{DynamicResource AccentBrush}"
-                         FontWeight="SemiBold"
-                         VerticalAlignment="Center" />
-              <Button Content="REFRESH JSON"
-                      Command="{Binding ReloadLocalProfilesCommand}"
-                      HorizontalAlignment="Right"
-                      Padding="10,5"
-                      FontSize="8" />
-            </Grid>
-            <TextBlock Text="Each heating profile is a JSON file with its selected colorway; loading never writes to the device."
-                       FontSize="9"
-                       Foreground="{DynamicResource MutedBrush}"
-                       TextWrapping="Wrap"
-                       Margin="0,4,0,7" />
-            <Grid Margin="0,0,0,7">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <TextBox AutomationProperties.AutomationId="HeatingProfileNameEditor"
-                       Text="{Binding HeatingProfileName, UpdateSourceTrigger=PropertyChanged}"
-                       MaxLength="64" />
-              <Button Grid.Column="2"
-                      AutomationProperties.AutomationId="SaveHeatingProfileButton"
-                      Content="SAVE JSON"
-                      Command="{Binding SaveHeatingProfileCommand}"
-                      Padding="12,7" />
-            </Grid>
-            <Grid Margin="0,0,0,7">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-              <Button AutomationProperties.AutomationId="ApplyHeatingProfileButton"
-                      Content="USE PROFILE"
-                      Command="{Binding ApplyHeatingProfileCommand}" />
-              <Button Grid.Column="2"
-                      Content="DELETE PROFILE"
-                      Command="{Binding DeleteHeatingProfileCommand}"
-                      Foreground="#FF8D95" />
-            </Grid>
-            <Border Height="64"
-                    Background="{DynamicResource SunkenBrush}"
-                    CornerRadius="10"
-                    Padding="4"
-                    Margin="0,0,0,8">
-              <ListBox AutomationProperties.AutomationId="SavedHeatingProfilesSelector"
-                       ItemsSource="{Binding SavedHeatingProfiles}"
-                       SelectedItem="{Binding SelectedSavedHeatingProfile}"
-                       Background="Transparent"
-                       BorderThickness="0"
-                       ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                       ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                <ListBox.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" />
-                  </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                  <DataTemplate>
-                    <Grid Width="154" Height="42">
-                      <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="7" />
-                      </Grid.RowDefinitions>
-                      <TextBlock Text="{Binding Name}"
-                                 FontSize="9"
-                                 FontWeight="SemiBold"
-                                 TextTrimming="CharacterEllipsis" />
-                      <TextBlock Grid.Row="1"
-                                 Text="{Binding DetailText}"
-                                 FontSize="7"
-                                 Foreground="{DynamicResource MutedBrush}"
-                                 TextTrimming="CharacterEllipsis"
-                                 Margin="0,1,0,3" />
-                      <Border Grid.Row="2"
-                              CornerRadius="3"
-                              Background="{Binding Gradient}" />
+                <Grid ColumnDefinitions="Auto,12,*">
+                  <TextBlock Text="VAPOR" FontSize="9" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" />
+                  <ComboBox Grid.Column="2" ItemsSource="{Binding VaporLevels}" SelectedItem="{Binding EditorVapor}" ItemTemplate="{StaticResource DarkComboItemTemplate}" HorizontalAlignment="Stretch" />
+                </Grid>
+                <Button AutomationProperties.AutomationId="ProfileColorSelectorButton" Command="{Binding ShowColorCommand}" Background="Transparent" BorderThickness="0" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                  <StackPanel Spacing="5">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="{Binding CurrentColorProfileName}" FontSize="10" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Grid.Column="1" Text="EDIT COLORS ›" FontSize="9" Foreground="{DynamicResource AccentBrush}" />
                     </Grid>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
+                    <Border Height="14" CornerRadius="7" Background="{Binding EditorPaletteBrush}" />
+                  </StackPanel>
+                </Button>
+                <Expander Header="Boost settings" HorizontalAlignment="Stretch">
+                  <Grid ColumnDefinitions="*,12,*" Margin="0,6,0,0">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="{Binding BoostEditorLabel}" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
+                      <TextBox Text="{Binding EditorBoostTemperature, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="4">
+                      <TextBlock Text="TIME BOOST SEC" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
+                      <TextBox Text="{Binding EditorBoostSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                  </Grid>
+                </Expander>
+              </StackPanel>
             </Border>
+            <TextBlock Text="{Binding LocalProfileHint}" FontSize="9" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+              <TextBlock Text="SAVED HEAT JSON" FontSize="10" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Content="REFRESH" Command="{Binding ReloadLocalProfilesCommand}" Padding="10,5" FontSize="9" />
+            </Grid>
+            <ComboBox AutomationProperties.AutomationId="SavedHeatingProfilesSelector" ItemsSource="{Binding SavedHeatingProfiles}" SelectedItem="{Binding SelectedSavedHeatingProfile}" HorizontalAlignment="Stretch" PlaceholderText="No saved profiles yet">
+              <ComboBox.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding Name}" FontSize="11" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding DetailText}" FontSize="9" Foreground="{DynamicResource MutedBrush}" /></StackPanel></DataTemplate></ComboBox.ItemTemplate>
+            </ComboBox>
+            <Grid ColumnDefinitions="*,8,*">
+              <Button Content="LOAD TO EDIT" Command="{Binding EditHeatingProfileCommand}" />
+              <Button Grid.Column="2" AutomationProperties.AutomationId="ApplyHeatingProfileButton" Content="USE FOR SESSION" Command="{Binding ApplyHeatingProfileCommand}" />
+            </Grid>
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,10,0" />
+              <Button Grid.Column="1" Content="DELETE" Command="{Binding DeleteHeatingProfileCommand}" Foreground="{DynamicResource DangerBrush}" Padding="10,5" FontSize="9" />
+            </Grid>
+            <Expander Header="Device slot &amp; shortcut" HorizontalAlignment="Stretch" Margin="0,4,0,0">
+              <StackPanel Spacing="7" Margin="0,8,0,0">
+                <TextBlock Text="Requires a connected, verified device. Local JSON saving stays independent." FontSize="10" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" />
+                <TextBlock Text="DEVICE SLOT LABEL" FontSize="9" Foreground="{DynamicResource MutedBrush}" />
+                <TextBox AutomationProperties.AutomationId="ProfileNameEditor" Text="{Binding EditorName, UpdateSourceTrigger=PropertyChanged}" MaxLength="31" />
+                <Button Content="WRITE DEVICE SLOT" Command="{Binding SaveProfileCommand}" />
+                <Grid ColumnDefinitions="*,8,Auto">
+                  <ComboBox ItemsSource="{Binding ProfileMacroOptions}" ItemTemplate="{StaticResource ShortcutOptionTemplate}" SelectedValue="{Binding EditorProfileMacroKey}" />
+                  <Button Grid.Column="2" Content="SAVE MACRO" Command="{Binding SavePreferencesCommand}" Padding="12,7" />
+                </Grid>
+                <TextBlock Text="Shortcut selects the slot from Home while idle; it never starts heat." FontSize="9" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Expander>
           </StackPanel>
         </ScrollViewer>
 
-        <ScrollViewer IsVisible="{Binding ColorVisibility}"
-                      VerticalScrollBarVisibility="Hidden"
-                      HorizontalScrollBarVisibility="Disabled"
-                      Margin="0,8,0,12">
-          <StackPanel Margin="28,0,28,0">
-            <TextBlock Text="{Binding CurrentColorProfileName}"
-                       FontSize="19"
-                       FontWeight="SemiBold"
-                       TextTrimming="CharacterEllipsis"
-                       Margin="0,0,0,1" />
-            <TextBlock Text="{Binding ColorPageContextText}"
-                       FontSize="8"
-                       Foreground="{DynamicResource MutedBrush}"
-                       TextTrimming="CharacterEllipsis"
-                       Margin="0,0,0,6" />
-
-            <Border Height="18"
-                    CornerRadius="9"
-                    Margin="0,0,0,8"
-                    Background="{Binding EditorPaletteBrush}"
-                    PointerPressed="ColorRampPointerPressed"
-                    ToolTip.Tip="Select the nearest color stop" />
-
-            <Grid Height="166">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="48" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="48" />
-              </Grid.ColumnDefinitions>
-              <Button Grid.Column="0"
-                      Content="‹"
-                      Command="{Binding PreviousColorStopCommand}"
-                      Width="40"
-                      Height="52"
-                      Padding="0"
-                      FontSize="25"
-                      Background="Transparent"
-                      BorderThickness="0"
-                      VerticalAlignment="Center"
-                      ToolTip.Tip="Previous color in this colorway" />
-              <controls:ColorWheelPicker Grid.Column="1"
-                                         Width="142"
-                                         Height="160"
-                                         HorizontalAlignment="Center"
-                                         SelectedColor="{Binding WheelColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-              <Button Grid.Column="2"
-                      Content="›"
-                      Command="{Binding NextColorStopCommand}"
-                      Width="40"
-                      Height="52"
-                      Padding="0"
-                      FontSize="25"
-                      Background="Transparent"
-                      BorderThickness="0"
-                      VerticalAlignment="Center"
-                      ToolTip.Tip="Next color in this colorway" />
+        <ScrollViewer x:Name="ColorsScroll" IsVisible="{Binding ColorVisibility}"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,8,0,12">
+          <StackPanel Margin="24,0,24,12" Spacing="8">
+            <TextBlock Text="COLORWAYS" FontSize="19" FontWeight="SemiBold" />
+            <TextBlock Text="Create colors locally, then pair them with a heat profile." FontSize="10" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,8,Auto">
+              <TextBox AutomationProperties.AutomationId="PaletteNameEditor" Text="{Binding PaletteName, UpdateSourceTrigger=PropertyChanged}" MaxLength="64" PlaceholderText="Name your colorway" />
+              <Button Grid.Column="2" AutomationProperties.AutomationId="SaveColorPaletteButton" Content="SAVE COLOR JSON" Command="{Binding SaveColorPaletteCommand}" Padding="12,7" />
             </Grid>
-
-            <Grid Margin="0,1,0,8">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-              <Button Content="REMOVE"
-                      Command="{Binding RemoveColorStopCommand}"
-                      HorizontalAlignment="Right"
-                      Padding="12,6"
-                      Margin="0,0,12,0" />
-              <TextBlock Grid.Column="1"
-                         Text="{Binding ColorStopPositionText}"
-                         FontSize="9"
-                         FontWeight="SemiBold"
-                         Foreground="{DynamicResource AccentBrush}"
-                         VerticalAlignment="Center" />
-              <Button Grid.Column="2"
-                      Content="ADD"
-                      Command="{Binding AddColorStopCommand}"
-                      HorizontalAlignment="Left"
-                      Padding="12,6"
-                      Margin="12,0,0,0" />
+            <TextBlock Text="{Binding ColorSaveValidation}" Foreground="{DynamicResource DangerBrush}" FontSize="10" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{Binding CurrentColorProfileName}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              <TextBlock Grid.Column="1" Text="{Binding ColorStopPositionText}" FontSize="9" Foreground="{DynamicResource AccentBrush}" />
             </Grid>
-
-            <Grid Margin="0,0,0,10">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="2*" />
-              </Grid.ColumnDefinitions>
-              <Button AutomationProperties.AutomationId="UseColorWithHeatingProfileButton"
-                      Content="USE WITH HEAT PROFILE"
-                      Command="{Binding UseColorWithHeatingProfileCommand}"
-                      Background="{DynamicResource AccentBrush}"
-                      Foreground="{DynamicResource AccentForegroundBrush}"
-                      BorderBrush="{DynamicResource AccentBrush}" />
-              <Button Grid.Column="2"
-                      AutomationProperties.AutomationId="SaveProfileColorButton"
-                      Content="WRITE PROFILE"
-                      Command="{Binding SaveProfileCommand}" />
+            <Border Height="16" CornerRadius="8" Background="{Binding EditorPaletteBrush}" PointerPressed="ColorRampPointerPressed" ToolTip.Tip="Select the nearest color stop" />
+            <Grid Height="166" ColumnDefinitions="48,*,48">
+              <Button Content="‹" Command="{Binding PreviousColorStopCommand}" Width="40" Height="52" Padding="0" FontSize="25" Background="Transparent" BorderThickness="0" VerticalAlignment="Center" ToolTip.Tip="Previous color stop" />
+              <controls:ColorWheelPicker Grid.Column="1" Width="142" Height="160" HorizontalAlignment="Center" SelectedColor="{Binding WheelColor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+              <Button Grid.Column="2" Content="›" Command="{Binding NextColorStopCommand}" Width="40" Height="52" Padding="0" FontSize="25" Background="Transparent" BorderThickness="0" VerticalAlignment="Center" ToolTip.Tip="Next color stop" />
             </Grid>
-
-            <Grid Margin="0,0,0,6">
-              <TextBlock Text="COLOR PROFILES"
-                         FontSize="9"
-                         Foreground="{DynamicResource AccentBrush}"
-                         FontWeight="SemiBold"
-                         VerticalAlignment="Center" />
-              <Button Content="REFRESH JSON"
-                      Command="{Binding ReloadLocalProfilesCommand}"
-                      HorizontalAlignment="Right"
-                      Padding="10,5"
-                      FontSize="8" />
+            <Grid ColumnDefinitions="*,8,*">
+              <Button Content="REMOVE STOP" Command="{Binding RemoveColorStopCommand}" />
+              <Button Grid.Column="2" Content="ADD STOP" Command="{Binding AddColorStopCommand}" />
             </Grid>
-            <Grid Margin="0,0,0,6">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <TextBox AutomationProperties.AutomationId="PaletteNameEditor"
-                       Text="{Binding PaletteName, UpdateSourceTrigger=PropertyChanged}"
-                       MaxLength="64" />
-              <Button Grid.Column="2"
-                      AutomationProperties.AutomationId="SaveColorPaletteButton"
-                      Content="SAVE JSON"
-                      Command="{Binding SaveColorPaletteCommand}"
-                      Padding="12,7" />
+            <Button AutomationProperties.AutomationId="UseColorWithHeatingProfileButton" Content="USE WITH HEAT PROFILE" Command="{Binding UseColorWithHeatingProfileCommand}"
+                    Background="{DynamicResource AccentBrush}" Foreground="{DynamicResource AccentForegroundBrush}" BorderBrush="{DynamicResource AccentBrush}" />
+            <TextBlock Text="{Binding LocalProfileHint}" FontSize="9" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="SAVED COLOR JSON" FontSize="10" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Content="REFRESH" Command="{Binding ReloadLocalProfilesCommand}" Padding="10,5" FontSize="9" />
             </Grid>
-
-            <Grid Margin="0,0,0,6">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="*" />
-              </Grid.ColumnDefinitions>
-              <Button AutomationProperties.AutomationId="ApplyColorPaletteButton"
-                      Content="USE PROFILE"
-                      Command="{Binding ApplyColorPaletteCommand}" />
-              <Button Grid.Column="2"
-                      Content="DELETE PROFILE"
-                      Command="{Binding DeleteColorPaletteCommand}"
-                      Foreground="#FF8D95" />
+            <ComboBox AutomationProperties.AutomationId="SavedColorProfilesSelector" ItemsSource="{Binding SavedColorPalettes}" SelectedItem="{Binding SelectedSavedColorPalette}" HorizontalAlignment="Stretch" PlaceholderText="No saved colorways yet">
+              <ComboBox.ItemTemplate><DataTemplate><Grid ColumnDefinitions="*,80"><TextBlock Text="{Binding Name}" FontSize="11" TextTrimming="CharacterEllipsis" Margin="0,0,8,0" /><Border Grid.Column="1" Height="12" CornerRadius="6" Background="{Binding Gradient}" /></Grid></DataTemplate></ComboBox.ItemTemplate>
+            </ComboBox>
+            <Grid ColumnDefinitions="*,8,*">
+              <Button AutomationProperties.AutomationId="ApplyColorPaletteButton" Content="LOAD COLORS" Command="{Binding ApplyColorPaletteCommand}" />
+              <Button Grid.Column="2" Content="DELETE" Command="{Binding DeleteColorPaletteCommand}" Foreground="{DynamicResource DangerBrush}" />
             </Grid>
-
-            <Border Height="70"
-                    Background="{DynamicResource SunkenBrush}"
-                    CornerRadius="10"
-                    Padding="4"
-                    Margin="0,0,0,6">
-              <ListBox AutomationProperties.AutomationId="SavedColorProfilesSelector"
-                       ItemsSource="{Binding SavedColorPalettes}"
-                       SelectedItem="{Binding SelectedSavedColorPalette}"
-                       Background="Transparent"
-                       BorderThickness="0"
-                       ScrollViewer.HorizontalScrollBarVisibility="Hidden"
-                       ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                <ListBox.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" />
-                  </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                  <DataTemplate>
-                    <Grid Width="138" Height="46">
-                      <Grid.RowDefinitions>
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="12" />
-                      </Grid.RowDefinitions>
-                      <TextBlock Text="{Binding Name}"
-                                 FontSize="9"
-                                 FontWeight="SemiBold"
-                                 TextTrimming="CharacterEllipsis"
-                                 VerticalAlignment="Top" />
-                      <Border Grid.Row="1"
-                              CornerRadius="5"
-                              Background="{Binding Gradient}" />
-                    </Grid>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
-            </Border>
-
+            <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" />
+            <Expander Header="Device slot colors" HorizontalAlignment="Stretch">
+              <StackPanel Spacing="6" Margin="0,6,0,0">
+                <TextBlock Text="{Binding ColorPageContextText}" FontSize="10" Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" />
+                <Button AutomationProperties.AutomationId="SaveProfileColorButton" Content="WRITE DEVICE SLOT" Command="{Binding SaveProfileCommand}" />
+              </StackPanel>
+            </Expander>
           </StackPanel>
         </ScrollViewer>
-
         <ScrollViewer IsVisible="{Binding SettingsVisibility}"
                       VerticalScrollBarVisibility="Auto"
                       Margin="0,8,0,18">
@@ -1347,7 +993,6 @@
       </Grid>
 
       <Border Grid.Row="2"
-              IsVisible="{Binding DeviceVisibility}"
               BorderBrush="{DynamicResource RaisedBrush}"
               BorderThickness="0,1,0,0"
               CornerRadius="0,0,20,20"
