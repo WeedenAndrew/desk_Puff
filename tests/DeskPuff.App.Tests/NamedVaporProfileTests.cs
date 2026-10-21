@@ -68,9 +68,18 @@ public sealed class NamedVaporProfileTests
         try
         {
             LocalProfileLibrary library = new(root);
-            await library.SaveHeatingAsync(new() { Name = "legacy", DeviceProfileName = "legacy", TargetTemperatureCelsius = 220,
-                DurationSeconds = 60, Vapor = VaporLevel.Max, BoostTemperatureCelsius = 5, BoostDurationSeconds = 10,
-                ColorProfileName = "blue", Colors = ["#0000FF"] }, null, CancellationToken.None);
+            await library.SaveHeatingAsync(new()
+            {
+                Name = "legacy",
+                DeviceProfileName = "legacy",
+                TargetTemperatureCelsius = 220,
+                DurationSeconds = 60,
+                Vapor = VaporLevel.Max,
+                BoostTemperatureCelsius = 5,
+                BoostDurationSeconds = 10,
+                ColorProfileName = "blue",
+                Colors = ["#0000FF"]
+            }, null, CancellationToken.None);
             FakeDeviceClient client = new();
             await using SessionController controller = new(client, new DeviceSafetyPolicy());
             await using MainViewModel viewModel = new(controller, true, root);

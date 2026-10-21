@@ -33,8 +33,11 @@ public sealed class RuntimeSessionTransactionTests
     }
 
     [TestMethod]
-    [DataRow("time", -1f)] [DataRow("time", 1000f)]
-    [DataRow("temp", 1f)] [DataRow("temp", 500f)] [DataRow("intn", 0.75f)]
+    [DataRow("time", -1f)]
+    [DataRow("time", 1000f)]
+    [DataRow("temp", 1f)]
+    [DataRow("temp", 500f)]
+    [DataRow("intn", 0.75f)]
     public async Task FiniteInvalidOriginalsRefuseBeforeMutation(string field, float invalid)
     {
         FakeWire wire = new(); wire.Values[$"/p/app/thc/{field}"] = LoraxValueCodec.WriteSingle(invalid);
@@ -45,7 +48,9 @@ public sealed class RuntimeSessionTransactionTests
     }
 
     [TestMethod]
-    [DataRow(0)] [DataRow(1)] [DataRow(255)]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(255)]
     public async Task ExternalContextOrRuntimeChangePreventsAnyCleanupWrite(int selection)
     {
         FakeWire wire = new(); RuntimeSessionTransaction transaction = wire.Create();
@@ -73,8 +78,10 @@ public sealed class RuntimeSessionTransactionTests
     }
 
     [TestMethod]
-    [DataRow(false, false)] [DataRow(true, false)]
-    [DataRow(false, true)] [DataRow(true, true)]
+    [DataRow(false, false)]
+    [DataRow(true, false)]
+    [DataRow(false, true)]
+    [DataRow(true, true)]
     public async Task OriginalTemperatureUsesExactEncodedBounds(bool upper, bool outside)
     {
         DeviceLimits limits = new(204.44444444444446, 315.55555555555554,

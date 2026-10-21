@@ -1702,7 +1702,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 profile.TargetTemperatureCelsius,
                 profile.Duration,
                 profile.Vapor,
-                profile.ColorPalette) { VaporMode = saved.VaporMode },
+                profile.ColorPalette)
+            { VaporMode = saved.VaporMode },
             cancellationToken);
         ApplySnapshot(controller.Snapshot);
     }
@@ -2034,7 +2035,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 SavedColorPalettes.FirstOrDefault(
                     palette => ColorsMatch(palette.Colors, saved.Colors))?.Name ?? saved.ColorProfileName,
                 saved.Colors,
-                stored.FileName) { VaporMode = saved.VaporMode });
+                stored.FileName)
+            { VaporMode = saved.VaporMode });
         }
 
         SelectedSavedHeatingProfile = SavedHeatingProfiles.FirstOrDefault();
@@ -2252,7 +2254,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             stored.Profile.BoostDurationSeconds,
             stored.Profile.ColorProfileName,
             stored.Profile.Colors,
-            stored.FileName) { VaporMode = stored.Profile.VaporMode };
+            stored.FileName)
+        { VaporMode = stored.Profile.VaporMode };
         if (existingIndex >= 0)
         {
             if (ReferenceEquals(savedProfileSelection, SavedHeatingProfiles[existingIndex]))

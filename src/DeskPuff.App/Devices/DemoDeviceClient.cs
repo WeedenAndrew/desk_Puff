@@ -183,7 +183,7 @@ internal sealed class DemoDeviceClient : IDeviceClient, ISessionOverrideClient
                 TargetTemperatureCelsius = requested.TargetTemperatureCelsius,
                 SessionTotal = requested.Duration,
                 Vapor = requested.Vapor,
-            RuntimeVaporMode = requested.VaporMode,
+                RuntimeVaporMode = requested.VaporMode,
             };
         }
 

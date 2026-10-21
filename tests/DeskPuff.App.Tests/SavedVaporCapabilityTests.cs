@@ -1,5 +1,5 @@
-using DeskPuff.App.ViewModels;
 using DeskPuff.App.Devices;
+using DeskPuff.App.ViewModels;
 using DeskPuff.Core.Devices;
 using DeskPuff.Core.Profiles;
 using DeskPuff.Core.Safety;
@@ -66,9 +66,15 @@ public sealed class SavedVaporCapabilityTests
 
     private static LocalHeatingProfile Profile(VaporLevel vapor) => new()
     {
-        Name = "Requested vapor", DeviceProfileName = "Requested vapor", TargetTemperatureCelsius = 220,
-        DurationSeconds = 60, Vapor = vapor, BoostTemperatureCelsius = 5, BoostDurationSeconds = 10,
-        ColorProfileName = "Blue", Colors = ["#1122FF"],
+        Name = "Requested vapor",
+        DeviceProfileName = "Requested vapor",
+        TargetTemperatureCelsius = 220,
+        DurationSeconds = 60,
+        Vapor = vapor,
+        BoostTemperatureCelsius = 5,
+        BoostDurationSeconds = 10,
+        ColorProfileName = "Blue",
+        Colors = ["#1122FF"],
     };
 
     [TestMethod]

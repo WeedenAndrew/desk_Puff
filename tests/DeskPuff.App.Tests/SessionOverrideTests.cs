@@ -220,7 +220,8 @@ public sealed class SessionOverrideTests
             10,
             10,
             "Custom colorway",
-            SavedColors) { VaporMode = SessionVaporMode.Smooth };
+            SavedColors)
+        { VaporMode = SessionVaporMode.Smooth };
 
     // Goes through the command so a refusal lands in StatusText the way it does
     // for the user, rather than surfacing as an exception the test swallows.

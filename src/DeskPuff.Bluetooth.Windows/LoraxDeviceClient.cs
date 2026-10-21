@@ -499,7 +499,8 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
             name,
             modelCode,
             firmware,
-            serialNumber: null) with { FirmwareWireHex = Convert.ToHexString(firmwareBytes.Span) };
+            serialNumber: null) with
+        { FirmwareWireHex = Convert.ToHexString(firmwareBytes.Span) };
         bool isHardwareVerified = CompatibilityCatalog.IsHardwareVerified(connectedIdentity);
         BluetoothDiagnosticMessages.WriteIdentity(
             diagnosticLog,
@@ -615,7 +616,8 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
             SecondsOrZero(elapsedSeconds),
             true,
             verified,
-            verified ? null : "Read-only until this exact firmware passes hardware safety verification.") { RuntimeVaporMode = runtimeVapor };
+            verified ? null : "Read-only until this exact firmware passes hardware safety verification.")
+        { RuntimeVaporMode = runtimeVapor };
     }
 
     /// <summary>

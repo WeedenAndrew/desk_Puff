@@ -11,7 +11,8 @@ public sealed class NamedVaporRenderTests
 {
     private static readonly string[] RequiredControls = ["SessionVaporSelector", "VaporCapabilityNotice", "SaveHeatingProfileButton", "ProfilesNavButton", "HomeNavButton", "ColorNavButton"];
     [TestMethod]
-    [DataRow(false)] [DataRow(true)]
+    [DataRow(false)]
+    [DataRow(true)]
     public void ActualModesAndLegacyChoiceFitDefaultWindow(bool legacy) => HeadlessRender.OnUiThread(async () =>
     {
         RenderedFrame frame = await HeadlessRender.CaptureAsync("named-vapor", viewModel =>

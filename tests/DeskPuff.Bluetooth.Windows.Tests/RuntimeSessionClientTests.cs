@@ -31,7 +31,10 @@ public sealed partial class ThcProbeTests
     }
 
     [TestMethod]
-    [DataRow(1)] [DataRow(2)] [DataRow(3)] [DataRow(4)]
+    [DataRow(1)]
+    [DataRow(2)]
+    [DataRow(3)]
+    [DataRow(4)]
     public async Task RuntimeSession_LostReplyAtEveryWrite_RestoresWithoutHeat(int boundary)
     {
         RecordingLog log = new(); ProbeTransport transport = RuntimeWire(log);
@@ -62,7 +65,10 @@ public sealed partial class ThcProbeTests
     }
 
     [TestMethod]
-    [DataRow(1)] [DataRow(2)] [DataRow(3)] [DataRow(4)]
+    [DataRow(1)]
+    [DataRow(2)]
+    [DataRow(3)]
+    [DataRow(4)]
     public async Task RuntimeSession_CancellationAtEveryApplyBoundary_UsesIndependentRecovery(int boundary)
     {
         RecordingLog log = new(); ProbeTransport transport = RuntimeWire(log);
@@ -115,7 +121,10 @@ public sealed partial class ThcProbeTests
     }
 
     [TestMethod]
-    [DataRow(1)] [DataRow(2)] [DataRow(3)] [DataRow(4)]
+    [DataRow(1)]
+    [DataRow(2)]
+    [DataRow(3)]
+    [DataRow(4)]
     public async Task RuntimeSession_CleanupLostReplyRetainsRecoveryAndStop(int boundary)
     {
         RecordingLog log = new(); ProbeTransport transport = RuntimeWire(log);

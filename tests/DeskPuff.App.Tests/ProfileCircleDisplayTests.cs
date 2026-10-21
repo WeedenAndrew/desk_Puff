@@ -262,7 +262,8 @@ public sealed class ProfileCircleDisplayTests
             10,
             10,
             "Custom colorway",
-            ["#22FF88", "#1188FF"]) { VaporMode = SessionVaporMode.Smooth };
+            ["#22FF88", "#1188FF"])
+        { VaporMode = SessionVaporMode.Smooth };
 
     private static async Task WaitForAsync(Func<bool> condition)
     {

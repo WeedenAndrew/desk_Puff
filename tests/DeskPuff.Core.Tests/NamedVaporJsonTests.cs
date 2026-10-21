@@ -15,9 +15,16 @@ public sealed class NamedVaporJsonTests
             LocalProfileLibrary library = new(root);
             LocalHeatingProfile original = new()
             {
-                Name = "test", DeviceProfileName = "test", TargetTemperatureCelsius = 220, DurationSeconds = 60,
-                Vapor = VaporLevel.Max, VaporMode = SessionVaporMode.Intense, BoostTemperatureCelsius = 5,
-                BoostDurationSeconds = 10, ColorProfileName = "blue", Colors = ["#0000FF"],
+                Name = "test",
+                DeviceProfileName = "test",
+                TargetTemperatureCelsius = 220,
+                DurationSeconds = 60,
+                Vapor = VaporLevel.Max,
+                VaporMode = SessionVaporMode.Intense,
+                BoostTemperatureCelsius = 5,
+                BoostDurationSeconds = 10,
+                ColorProfileName = "blue",
+                Colors = ["#0000FF"],
             };
             await library.SaveHeatingAsync(original, null, CancellationToken.None);
             LocalHeatingProfile loaded = (await library.LoadHeatingAsync(CancellationToken.None))[0].Profile;
