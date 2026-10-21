@@ -1,26 +1,22 @@
-# Media
+# UI previews
 
-Screenshots referenced by the repository README.
+These 460 by 760 images show the production window with an explicitly injected
+test-only simulator. Names, colors, battery and state are fixture data. They do
+not demonstrate a physical device connection or hardware validation.
 
-| file | what it must show |
+| file | source and content |
 |---|---|
-| `home.png` | Home, connected and idle, with the session circle, the boost buttons, and the profile strip visible |
-| `profiles.png` | the Profiles page with the editor populated |
-| `color.png` | the Color page with a colorway loaded |
-| `settings.png` | the Settings page |
+| home.png | InterfaceRenderTests: connected idle fixture, session circle, boosts and profile strip |
+| profiles.png | NamedVaporRenderTests: local draft with an explicit named vapor choice |
+| color.png | InterfaceRenderTests: test colorway and custom wheel |
+| settings.png | InterfaceRenderTests: fixture controls and settings |
 
-These are not captured by hand. `InterfaceRenderTests` renders the real window
-offscreen through Avalonia's headless Skia backend, at the window's own 460 by
-760, driving the same view model and demo client that `--demo` uses, and writes
-the four files here. Running the test suite regenerates them, so an image can
-never quietly stop matching the build. The output is byte-identical between
-runs, so a regenerated image is not a spurious change.
+Tests render through Avalonia's headless Skia backend, inspect nonblank/distinct
+frames and check control layout. Refresh these checked-in previews after UI
+changes; direct custom runners may place generated media under their own output
+root. Rendering results can vary with backend/fonts, so byte-identical files
+across all machines are not a requirement.
 
-The same test asserts each frame is not blank, that the middle of the session
-circle is not empty, and that the four pages differ from one another. A frame
-that failed to render fails the build rather than landing here as a picture of
-nothing.
-
-Nothing here may contain a serial number, Bluetooth address, or any other
-device identifier. `--demo` invents its device, so a demo capture is safe by
-construction.
+No image may contain a real serial number, Bluetooth address or other private
+device identifier. The simulator is compiled only into test support and is not
+available through the shipping executable.

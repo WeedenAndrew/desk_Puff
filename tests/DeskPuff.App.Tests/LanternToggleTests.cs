@@ -29,7 +29,7 @@ public sealed class LanternToggleTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
 
         Assert.AreEqual("TURN LANTERN ON", viewModel.LanternButtonText);
         Assert.IsTrue(viewModel.ToggleLanternCommand.CanExecute(null));

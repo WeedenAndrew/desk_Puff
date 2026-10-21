@@ -61,14 +61,12 @@ Extreme1.5 and Intense1.0 runtime writes, matching reads, hcsFF, and start. All
 four scalar values have persistent-slot capture evidence. Smooth/Bold runtime
 writes, exact original-byte recovery, zero-boost restoration, and activation on
 the currently admitted AN tuple still need physical validation. Software tests
-are fake-wire evidence only. No agent device writes or heat were run.
+are fake-wire evidence only; they do not establish physical behavior.
 
 Tests cover all four explicit encodings, real managed framing, lost replies and
 cancellation at application boundaries, recovery ownership/bounds, reconnect
 while heating, cleanup uncertainty, boost restoration, JSON preservation,
 legacy explicit choice, offline save, and real headless 460x760 rendering.
-Normal VSTest could not connect to testhost within90seconds; fixture-aware direct
-runners were used. The final task report records exact executed/excluded cases.
 
 ## Use and build
 
@@ -79,4 +77,4 @@ this exact device identity has not been admitted; no AW bypass is provided.
 Rebuild/publish current source with the documented Windows-x64 publish profile;
 launch `artifacts/publish/win-x64/desk_Puff.exe` after rebuilding, with its existing
 `ble/desk-puff-ble.exe`. A previously published executable stays stale until
-rebuilt. Do not launch a mirror test binary as the installed project build.
+rebuilt.

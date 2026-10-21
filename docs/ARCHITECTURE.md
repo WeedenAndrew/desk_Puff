@@ -1,83 +1,75 @@
 # Architecture
 
-The codebase has three production layers:
+```text
+src/DeskPuff.App                 Avalonia UI and startup
+src/DeskPuff.Core                Models, local JSON, safety, session controller
+src/DeskPuff.Bluetooth.Windows   Lorax protocol, recovery, sidecar transport
+native/desk-puff-ble             Rust Bluetooth helper
+tests/                          Core, managed-wire, UI and render regressions
+  DeskPuff.App.Tests/Support     Test-only simulator and explicit test setup
+tools/capture                   Opt-in diagnostic tooling
+tools/release                   Shared local/CI release assembler
+docs/compatibility              Dated device verification
+docs/investigations             Retained protocol evidence and investigation history
+```
 
-- `DeskPuff.Core`: immutable models, typed device operations, safety policy, and
-  the session state machine. It has no Windows or Bluetooth dependency.
-- `DeskPuff.Bluetooth.Windows`: the Lorax protocol and the transport that
-  carries it. Low-level writes are internal and restricted by an exact path
-  allowlist. It does not open Bluetooth itself; see the sidecar below.
-- `DeskPuff.App`: compact Avalonia interface. It can request only typed
-  operations from `IDeviceClient`.
+The production layers depend inward: App requests typed operations through
+SessionController and IDeviceClient; Core has no platform or Bluetooth dependency.
+The Bluetooth client encodes exact allowlisted operations and communicates over
+stdin/stdout with a separate Rust helper. The helper alone opens Bluetooth.
+It is resolved only at `AppContext.BaseDirectory/ble/desk-puff-ble[.exe]`, never
+through PATH or the working directory. CI builds/tests/stages it; local .NET
+builds alone do not produce the helper. This process boundary is described in
+[THREAT_MODEL.md](THREAT_MODEL.md).
 
-## The Bluetooth sidecar
+Shipping startup always constructs the real client. There is no demo client,
+demo banner, demo storage root or automatic demo connection in production.
+Unsupported arguments, including the removed `--demo`, return before UI/client
+startup. Test support explicitly injects a simulator/fake and owns its profile
+and preferences paths; screenshots render the real window without hardware.
 
-Bluetooth is not opened in process. `SidecarLoraxTransport` launches a separate
-Rust executable, `desk-puff-ble`, and speaks a line-oriented JSON protocol to it
-over stdin and stdout, with binary payloads base64-encoded. The Rust side uses
-`btleplug` and is built with `panic = "abort"`.
+## Commands and recovery
 
-Each application run creates a UTF-8 diagnostic log beside the executable.
-Managed Lorax request/reply lines keep the status header separate from payload,
-and sidecar stderr is copied into the same timestamped log. Identity logging is
-limited to family, model code, quoted firmware, and verification state; serial
-numbers are not recorded. With `--trace-writes`, the normal policy checks still
-run, but an allowed write is discarded at the transport boundary after its
-complete frame has been constructed and logged.
+SessionController serializes commands and evaluates policy inside its gate.
+State changes are at-most-once: uncertainty prompts verification or bounded
+recovery, never a blind retry. Device identity, firmware admission, chamber and
+verified limits remain independent gates; UI buttons cannot expand support.
 
-The helper is located at `AppContext.BaseDirectory/ble/desk-puff-ble[.exe]`.
-Resolution deliberately does not consult `PATH`, the working directory, or an
-environment variable, so the binary cannot be substituted by altering the
-caller's environment.
+Named temporary vapor sessions additionally require model 13 / AN, API 39, chamber 2
+and runtime preflight. Original selection and runtime bytes are retained before
+mutation, bound to the same connection candidate and checked during cleanup.
+External context changes fail closed; disconnected recovery remains pending.
+Stop remains usable when another Start is blocked. FF is a temporary context,
+not a fifth device slot. Details and physical-validation limits are in the
+[runtime implementation](investigations/VAPOR-RUNTIME-IMPLEMENTATION-2026-10-20.md).
+Runtime mode and restoration behavior still need validation within the
+recorded compatibility scope.
 
-**This process boundary is a trust boundary and belongs in
-[THREAT_MODEL.md](THREAT_MODEL.md).** It is not listed there yet.
+## Local data and lighting
 
-> **Not yet buildable.** Nothing in CI, MSBuild, or the publish profile compiles
-> `native/desk-puff-ble` or stages it into `ble/`. `HelperPath()` is the only
-> reference to that directory in the repository. A published build therefore has
-> no helper and fails at the `File.Exists` check on the first real connection
-> attempt; only `--demo` runs. Closing this is Milestone 0.
+Production preferences and profiles retain their existing local application-data
+paths. Heating and color JSON live separately under
+`%LOCALAPPDATA%/desk_Puff/profiles`. Documents are capped at 16 KiB, validated as
+data, guarded against traversal/reparse files, and saved atomically. Local
+saving/loading never writes a device slot. Old vapor intent is preserved until
+an explicit named mode is chosen; JSON colors are display-only for live sessions.
 
-Tests mirror the production layers. The UI includes a deterministic demo client
-for development without hardware; demo mode is visually marked and cannot open
-Bluetooth.
+Profile lighting reads are bounded at 4,096bytes in 125-byte chunks. Solid-color
+edits patch only supported color bytes while preserving the original CBOR
+metadata/program/identity representation; the entire document is verified.
+Unsupported edits are refused before profile mutation. Local display palettes
+allow 32 stops; device-profile writes retain their separate 1–4 stop validation.
 
-Local presets are individual, size-bounded JSON documents beneath
-`%LOCALAPPDATA%\desk_Puff\profiles`. Color and heating profiles live in separate
-folders, with no artificial file-count limit. Each heating document contains
-bounded heating values plus an inline copy of its colorway, while an optional
-color-profile name is presentation metadata. Loading or refreshing these files
-changes only the UI editor; device writes continue through `SessionController`
-and the safety policy.
+Each run creates a diagnostic log beside the executable. Serial numbers are not
+read or logged. Reads are structurally format-checked rather than allowlisted;
+this remains a privacy boundary to review, not a newly implemented read gate.
+`--trace-writes` retains policy checks and discards constructed allowed writes
+at the transport boundary. It still connects and reads real hardware.
 
-`LocalProfileLibrary` treats the folders as an untrusted local data boundary.
-It rejects traversal names and reparse-point files, caps every document at 16
-KiB, parses JSON as data, validates all fields, and uses a temporary file plus an
-atomic move when saving. Malformed manually written profiles are skipped rather
-than partially applied.
+## Build and distribution
 
-## Command flow
-
-The UI can call only `IDeviceClient` operations. `SessionController` serializes
-reads and writes, evaluates the safety policy inside the command gate, and never
-retries a state change. The Windows client then converts the typed operation to
-one exact allowlisted path. The transport accepts only five Lorax opcodes:
-authentication, limit discovery, short reads, and short writes. There is no
-production API for arbitrary paths.
-
-Device identity is read once per connection. Changing heater telemetry is read
-on the UI cadence; battery telemetry is cached for ten seconds. Serial numbers
-are not requested, stored, displayed, or logged.
-
-That last property is currently held by there being no such call, not by a gate.
-`BuildWriteBody` refuses any path outside `LoraxPaths.IsWriteAllowed`;
-`BuildReadBody` performs only a format check, so reads are not allowlisted. A
-read allowlist would make the privacy claim structural rather than incidental.
-
-Profile lighting is stored by the device as CBOR rather than a plain RGB value.
-The Windows client uses bounded 125-byte reads, accepts only the expected nested
-lighting map, and exposes one to four colors to the typed profile model. A future
-verified write encodes the bounded solid-lighting form in chunks and compares the
-decoded read-back before reporting success. The firmware allowlist remains the
-independent gate for that write.
+The Windows release is self-contained, single-file compressed, without trimming,
+AOT or an external executable packer. The required BLE helper remains separate.
+The release assembler retains runtime files and legal notices, excludes debug
+symbols/logs, and emits an inventory plus ZIP. It does not delete local caches,
+preferences, evidence or previous packages. See [RELEASE.md](RELEASE.md).

@@ -2,7 +2,7 @@
 
 This checklist moves live Bluetooth validation to a Windows laptop without
 moving desktop-specific state into Git. It is a read-only milestone. The version
-0.1 verified-firmware allowlist must remain empty for the entire pass.
+existing verified-firmware admission must not be expanded during this pass.
 
 ## What Git does and does not transfer
 
@@ -43,8 +43,8 @@ dotnet publish .\src\DeskPuff.App\DeskPuff.App.csproj `
 ```
 
 Do not test a live base if restore, build, tests, formatting, or publish fails.
-The deterministic UI can be checked without Bluetooth by running the published
-executable with `--demo`.
+The interface can be checked without Bluetooth through the headless test
+suite. Simulation is test-only; the shipping executable rejects `--demo`.
 
 To inspect the complete frames that an owned, hardware-verified device would
 receive without transmitting any writes, run the published executable with
@@ -56,11 +56,12 @@ blocked. The UTF-8 log is written beside the executable as
 ## Read-only live pass
 
 1. Close the phone app and confirm the base is idle and cool.
-2. Launch the published `desk_Puff.exe` without `--demo` or `--trace-writes`.
+2. Launch the published `desk_Puff.exe --trace-writes` for this read-only pass.
 3. Scan and select only the base you own. Complete ordinary Windows pairing if
    Windows requests it.
-4. Confirm the application reports the exact firmware as read-only. Stop if any
-   state-changing control is enabled.
+4. Record the exact firmware and admission status. Recognized hardware can show
+   enabled controls; use only reads in this pass. Trace mode discards allowed
+   constructed writes, while unknown firmware remains policy-locked.
 5. Compare device name, model code, firmware, chamber, battery, operating state,
    and current temperature with the physical device and expected room conditions.
 6. Read every device-profile card. Compare each name, target temperature,

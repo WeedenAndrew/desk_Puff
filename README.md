@@ -1,253 +1,57 @@
 # desk_Puff
 
-[![CI](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/ci.yml/badge.svg)](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/codeql.yml/badge.svg)](https://github.com/WeedenAndrew/desk_Puff/actions/workflows/codeql.yml)
+A Windows Bluetooth controller for app-enabled Puffco bases. No accounts or
+cloud services.
 
-A compact Bluetooth controller for app-enabled Puffco e-rigs, in a small desktop
-window. No accounts, advertising, location tracking, social features, or cloud
-services.
+![Interface preview using test data](docs/media/home.png)
 
-> [!WARNING]
-> Early, independent, and not affiliated with Puff Corp. Live device writes are
-> gated on an allowlist of exact model and firmware pairs, each with recorded
-> operating limits. **One entry exists — the author's own device.** Everything
-> else connects read-only and says so. **If software state is ever uncertain,
-> press and hold the device's button until it powers off** — that ends the
-> session and the Bluetooth link together, and needs nothing working on the
-> computer.
+- Device profiles, heating telemetry, session controls and boosts.
+- Local heating/color JSON, with Smooth, Bold, Intense and Extreme session modes.
+- Color-wheel editing, saved palettes and an idle-device handoff control.
 
-![desk_Puff home screen](docs/media/home.png)
+Writes are limited to verified hardware. Current admission is Peak Pro model
+13 / firmware AN; named session vapor also requires API 39, a 3DXL chamber and
+successful preflight. Other firmware stays read-only. JSON session colors are
+display-only; device-slot color edits have separate limits.
+See [compatibility](docs/COMPATIBILITY.md) for the exact scope.
 
-## Supported hardware
+## Run
 
-- Peak Pro Bluetooth bases with a 3D or 3DXL chamber
-- Current app-enabled New Proxy bases (experimental discovery)
-
-The base is the Bluetooth device. A 3D or 3DXL chamber is detected through its
-base and never connects independently. Products without the app-enabled
-Bluetooth service are out of scope. Exact support and verification status is in
-[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
-
-## What works today
-
-**The Bluetooth path runs end to end on real hardware.** A Peak Pro is
-discovered, bonded, authenticated, and read: device name, chamber, battery,
-charge state, live heater temperature and session timing, the four device
-profile slots and their colorways. Control has been confirmed on one device —
-switching profiles, stealth mode, starting a heat cycle, and disconnecting
-cleanly.
-
-There is also a deterministic demo client that exercises the whole interface
-with no Bluetooth and no hardware, which is how the screenshots below are
-produced.
-
-| Profiles | Color | Settings |
-|---|---|---|
-| ![The Profiles page](docs/media/profiles.png) | ![The Color page](docs/media/color.png) | ![The Settings page](docs/media/settings.png) |
-
-Profiles come in two kinds. The device's four slots behave as they always have.
-The Profiles and Colors pages also work without a connection: choose **NEW**,
-name a heat profile, edit its settings and choose **SAVE HEAT JSON**. Save
-validation appears beside the draft; **LOAD TO EDIT** opens an existing file.
-Local heating and color JSON retain up to 32 display color stops. Device-slot
-writes keep their separate one-to-four-stop limit.
-Saved local profiles are JSON files that apply their parameters to a **single
-session**. Their temporary session settings are dropped when it ends; selecting one writes nothing to a slot,
-and the display says **SAVED PROFILE • NOT ON DEVICE** so it can never be
-mistaken for the device's own state.
-
-> [!IMPORTANT]
-> **Control is limited to hardware that has been characterised, and the list is
-> short.** Writes require an exact model and firmware pair on an allowlist, plus
-> temperature and duration limits recorded for that pair. The list currently
-> holds **one entry** — the author's own Peak Pro. Every other device connects
-> read-only and says so.
->
-> The gate sits below the interface. Enabling a button cannot bypass it, and
-> neither can editing the allowlist alone: a device with no recorded limits is
-> refused even if its firmware is listed.
-
-Bluetooth is opened by a separate Rust helper, `desk-puff-ble`, which the
-application launches from `ble/desk-puff-ble.exe` beside itself. CI builds that
-helper, runs its tests, and stages it into the published package, so a
-downloaded build can connect. Building locally with the `dotnet` commands below
-does **not** produce it — see [Build and test](#build-and-test).
-
-**Both quick-hit boosts now work on hardware.** Temperature and time boosts are
-read-modify-write against the session-scoped paths `/p/app/tmpo` and
-`/p/app/timo`, each verified by read-back, each clamped to a cumulative ceiling
-that has been reached and held on a real device — +15 °F and 30 seconds. The two
-boost types are counted separately, three each. Evidence is in
-[docs/compatibility/peak-pro-13-AN.md](docs/compatibility/peak-pro-13-AN.md),
-including two defects that validation turned up.
-
-The temperature boost is a **delta**, not a way to reach the device's maximum: a
-480 °F profile boosts to 495 °F and stops.
-
-Choose **USE PROFILE**, then **Start**, to run a saved JSON profile for one
-session. Choose **Smooth**, **Bold**, **Intense**, or **Extreme** in Profiles;
-new drafts default to Smooth. Older JSON keeps its original Standard/High/Max/XL
-value and needs a one-time explicit mode choice and save before Start. No old
-ordinal is silently treated as a new mode.
-
-The Bluetooth client verifies session time, temperature, vapor, and the app-only
-context before starting. It records original bytes and restores/compares them
-on stop or completion; failed recovery blocks another Start while Stop stays
-available. JSON colors remain display-only, and no device slot is written.
-
-Live activation requires the existing verified Peak Pro model 13 / AN identity,
-API 39, a 3DXL chamber, and successful runtime preflight. The reported AW-1d90ae1
-firmware remains unadmitted until its actual identity is established; it can
-still appear read-only. Managed fake-wire and UI tests do not establish physical
-restoration or Smooth/Bold runtime behavior on hardware. See the
-[runtime implementation and limits](docs/investigations/VAPOR-RUNTIME-IMPLEMENTATION-2026-10-20.md)
-and [dated capture evidence](docs/investigations/VAPOR-APP-ONLY-SESSION-2026-10-17.md).
-
-**WRITE PROFILE** edits a device slot. It preserves the original lighting
-document, including identity, metadata and animation data. Unchanged animation
-colors are left intact while heating settings change, within the existing
-one-to-four-stop device-profile validation limit. Color edits are limited
-to an existing `solid` RGB palette with the same number of stops; unsupported
-edits are refused before any profile setting is written. Supported edits patch
-only changed bytes and verify the entire document. These lighting writes have
-software regression coverage and still need validation on the device.
-
-## Safety boundaries
-
-The device firmware stays authoritative for heater control. The application
-contains no firmware updater, bootloader access, debricking, factory reset, raw
-command console, arbitrary Lorax path access, or automatic heating.
-
-- Unknown devices and firmware are read-only.
-- Commands are serialized; state-changing commands are at-most-once and are
-  never blindly retried.
-- Every value is validated against the device's own limits and a conservative
-  absolute ceiling before encoding, and verified by read-back where the protocol
-  allows it.
-- Handoff is a controlled disconnect and reconnect, never a forced takeover. It
-  cannot seize a base held by another controller or bypass Windows pairing.
-
-Detail in [docs/SAFETY.md](docs/SAFETY.md),
-[docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), and [SECURITY.md](SECURITY.md).
-
-## Run it
-
-The published `desk_Puff.exe` is self-contained for 64-bit Windows 10/11.
+Extract the complete Windows release, keeping its `ble` and `licenses` folders.
+The build is self-contained; a separate .NET installation is not required.
 
 ```powershell
 .\desk_Puff.exe
-.\desk_Puff.exe --demo
-.\desk_Puff.exe --trace-writes
 ```
 
-With no flag it opens Bluetooth and looks for a device. It never connects to an
-account or cloud service, and it sends nothing anywhere but the e-rig in front
-of you.
+Local profiles and preferences stay under `%LOCALAPPDATA%\desk_Puff`.
+In Profiles, choose **NEW**, name the draft and **SAVE HEAT JSON**. Use
+**LOAD TO EDIT** to change a saved file, or **USE FOR SESSION** followed by
+**Start**. Older JSON needs an explicit named vapor choice and one save.
 
-`--demo` exercises the whole interface without opening Bluetooth or addressing
-hardware.
+`--trace-writes` connects and reads normally but discards allowed writes at the
+transport boundary. Simulation exists only in tests. If device state is
+uncertain, hold its physical button until it powers off.
 
-`--trace-writes` connects to hardware and performs reads normally, but any write
-that passes the existing safety policy is fully constructed, logged, and then
-discarded before transmission. It never enables a blocked write. This lets the
-interface and exact outgoing Lorax frames be inspected without changing device
-state. Each run writes a UTF-8 diagnostic log beside the executable as
-`desk_Puff-<yyyyMMdd-HHmmss>.log`; serial numbers are never included.
+## Build
 
-## Build and test
-
-.NET 10 on Windows 10/11, Avalonia for the interface. A workspace-local SDK can
-live in `.tools/dotnet` and is ignored by Git. `global.json` pins SDK 10.0.400,
-and a contributor may have no suitable SDK on `PATH`, so prefer the local SDK
-when it exists:
+Use .NET SDK 10.0.400 and Rust on Windows 10/11:
 
 ```powershell
-$dotnet = if (Test-Path .\.tools\dotnet\dotnet.exe) {
-    (Resolve-Path .\.tools\dotnet\dotnet.exe).Path
-} else {
-    (Get-Command dotnet -ErrorAction Stop).Source
-}
-
-& $dotnet restore .\desk_Puff.slnx --locked-mode
-& $dotnet build   .\desk_Puff.slnx -c Release --no-restore
-& $dotnet test    .\desk_Puff.slnx -c Release --no-build
-& $dotnet format  .\desk_Puff.slnx --verify-no-changes --no-restore
+dotnet restore ./desk_Puff.slnx --locked-mode
+dotnet build ./desk_Puff.slnx -c Release --no-restore
+dotnet test ./desk_Puff.slnx -c Release --no-build --no-restore
+dotnet format ./desk_Puff.slnx --verify-no-changes --no-restore
 ```
 
-### Publish and launch the demo
+The Bluetooth helper is built separately. [Release instructions](docs/RELEASE.md)
+cover the helper, compressed executable, notices and ZIP packaging.
 
-With `$dotnet` selected as above, publish and launch the hardware-free demo
-from the repository root:
+## Reference
 
-```powershell
-& $dotnet restore .\desk_Puff.slnx --locked-mode
-& $dotnet publish .\src\DeskPuff.App\DeskPuff.App.csproj `
-    -c Release --no-restore -p:PublishProfile=Windows-x64
-& .\artifacts\publish\win-x64\desk_Puff.exe --demo
-```
+[Architecture](docs/ARCHITECTURE.md) · [Safety](docs/SAFETY.md) ·
+[Protocol notes](docs/investigations/PROTOCOL-NOTES.md) ·
+[Security](SECURITY.md)
 
-Keep restore and publish as separate commands, and keep `--no-restore` on the
-publish. A self-contained publish otherwise makes the SDK inject
-`Microsoft.NET.ILLink.Tasks` into `packages.lock.json`, even though the project
-does not declare it. CI's later `dotnet restore --locked-mode` then fails with
-NU1004. Once published, the same executable can be launched with `--demo`
-again without rebuilding.
-
-### Run the read-only device prober
-
-Wake the device and close the Puffco phone app first; a BLE peripheral accepts
-only one central connection at a time. Run the retained PowerShell prober from
-its own directory with profiles disabled and the Windows PowerShell execution
-policy bypassed for this process:
-
-```powershell
-Push-Location .\tools\capture
-try {
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\Capture-DeviceNoise.ps1
-} finally {
-    Pop-Location
-}
-```
-
-The prober is read-only: it never constructs the write opcode and cannot heat
-the device. It leaves `survey-<stamp>.log` and `frames-<stamp>.jsonl` beside the
-script so decoded results and raw frames remain paired.
-
-Bluetooth additionally needs the Rust helper in `native/desk-puff-ble`, which
-those commands do **not** produce. Build it separately:
-
-```powershell
-cargo build --release --locked
-```
-
-then copy `target\release\desk-puff-ble.exe` into a `ble\` folder beside
-`desk_Puff.exe`. CI does both steps and uploads the assembled package, so a
-downloaded build already has it.
-
-## Architecture
-
-Three layers, described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md):
-
-| | |
-|---|---|
-| `DeskPuff.Core` | models, typed device operations, safety policy, session state machine. No Windows or Bluetooth dependency. |
-| `DeskPuff.Bluetooth.Windows` | the Lorax protocol and its transport. Writes are restricted by an exact path allowlist. |
-| `DeskPuff.App` | Avalonia interface. Can request only typed operations. |
-
-Bluetooth is not opened in process: a separate Rust executable speaks a JSON
-protocol over stdin and stdout, and is resolved from a fixed path beside the
-application.
-
-## Contributing
-
-Start with [CONTRIBUTING.md](CONTRIBUTING.md). Protocol or device-write changes
-need tests, source attribution, an explicit safety argument, and owned-hardware
-evidence before a firmware entry can enable writes. Report security issues
-through [SECURITY.md](SECURITY.md), not a public issue containing sensitive
-detail.
-
-## License
-
-Source-available for personal and other noncommercial use under the
-[PolyForm Noncommercial License 1.0.0](LICENSE.md). Not OSI-approved
-open source, because the license intentionally restricts commercial use.
+Source-available under [PolyForm Noncommercial 1.0.0](LICENSE.md).
+See [NOTICE](NOTICE) and [third-party notices](THIRD_PARTY_NOTICES.md).

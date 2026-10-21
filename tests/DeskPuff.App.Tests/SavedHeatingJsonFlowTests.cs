@@ -48,8 +48,8 @@ public sealed class SavedHeatingJsonFlowTests
         FakeDeviceClient client = new();
         RecordingOverrides overrides = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
-        await viewModel.InitializeAsync();
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
         Assert.HasCount(1, viewModel.SavedHeatingProfiles);
 
         await ExecuteAsync(viewModel, viewModel.ApplyHeatingProfileCommand);
@@ -107,8 +107,8 @@ public sealed class SavedHeatingJsonFlowTests
         client.SetProfiles(profiles);
         RecordingOverrides overrides = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
-        await viewModel.InitializeAsync();
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
         viewModel.ShowProfilesCommand.Execute(null);
         viewModel.HeatingProfileName = "Created from device";
         // A device's unread legacy value is not an actual-mode choice.
@@ -140,7 +140,7 @@ public sealed class SavedHeatingJsonFlowTests
         FakeDeviceClient client = new();
         await client.DisconnectAsync(CancellationToken.None);
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: false, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await viewModel.InitializeAsync();
         Assert.IsFalse(viewModel.IsConnected);
         Assert.IsTrue(viewModel.ShowProfilesCommand.CanExecute(null));

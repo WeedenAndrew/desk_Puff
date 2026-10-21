@@ -8,7 +8,6 @@ and duration 1:30. They reported starting Extreme, stopping it, then starting
 a separate Intense session, applying two temperature boosts, and returning to
 idle before reporting. They saw no replacement-slot prompt. This was an
 exploratory mixed-action trace, not a controlled one-variable experiment.
-Agents did not start/stop heat, send device commands, or change production code.
 
 **Direct runtime vapor writes are now observed.** Both sessions wrote
 `/p/app/thc/temp`, `/p/app/thc/time`, and `/p/app/thc/intn`, with immediate
@@ -89,8 +88,8 @@ uint16 subscription ID / uint8 length / value entries. Across the deduplicated
 retained trace union, all 39,723 candidate frames consumed their exact lengths,
 with zero candidate framing failures. There were 112,359 entries in this
 retained mapping and 1,559 entries outside its retained safe-field mapping,
-deliberately not interpreted or published. Independent review associates those
-1,559 entries with already observed IDs 8/16/17/18 (counts 2/1032/513/12),
+deliberately not interpreted or published. Those 1,559 entries use already
+observed IDs 8/16/17/18 (counts 2/1032/513/12),
 log-related fields; they are not missing subscription registrations. Their
 payloads were not inspected for this revision. Source lookup retains original
 file record indices; unrelated event values are not published.
@@ -116,56 +115,22 @@ the user's earlier idle report without claiming it was false at its report time.
 No post-completion runtime intensity value was observed; hcs returning to 3
 does not prove that original runtime temperature/time/intensity bytes returned.
 
-The user subsequently clarified that they performed an **additional run after
-the Intense session**, then reported it finished and Bluetooth switched off /
-disconnected. Its trigger and profile remain unconfirmed. That later context
-does not establish the timing or cause of the captured 03/06 event. A follow-up
-USB export was attempted, but ADB showed no devices; the waiting export was
-cancelled with exit 1. No new ZIP or retained Bluetooth data resulted, so this
-report's packet conclusions remain limited to the first capture.
+A later reported run cannot be correlated to the captured 03/06 event.
+The first capture supplies no later runtime intensity readback, so restoration
+of original runtime values remains unproven.
 
 Earlier packet reads established model 13 / API 39 / chamber 2. The user
 reports official app 3.13.31 and device firmware AW-1d90ae1. Those version
 strings remain user-reported; no independently captured `/p/sys/fw/ver`
-response is supplied here. The current client reads that path and converts
-only its first byte, with an empty-response Unknown fallback; API39 is not a
-firmware fallback. The current verified firmware/limits tuple is model13/AN,
-not AW. This evidence changes no firmware catalog or production guard.
+response is supplied here. API 39 is not a firmware identity. Firmware
+admission remains a separate software boundary.
 
-## Reviewable implementation design, not implemented
+## Implementation reference
 
-1. Confirm actual live firmware identity read-only and separately review
-   compatibility/limits admission. Do not relabel API39 as AN or admit AW from
-   a user-reported label alone.
-2. Represent hcs `FF` explicitly as an observed app-only context, distinct
-   from slots 0–3. Current clear/parameter-state code assumes a valid slot;
-   it cannot be reused unchanged or silently substitute slot3. Reconcile
-   snapshot, selection, start, boost, reconnect, stop, and cleanup behavior.
-3. Establish fresh idle/authenticated state under the existing command gate,
-   then snapshot exact original hcs and runtime temperature/time/intensity
-   bytes plus persistent-slot comparison values before mutation. Fail before
-   writing if originals cannot be read, validated, or safely restored. An
-   existing app-only context needs explicit recovery handling, not a fake slot.
-4. Use a narrow reviewed session operation with the observed opcode/flags and
-   exact scalar readback; preserve conservative time-before-temperature
-   sequencing unless evidence requires another dependency. Include intensity
-   verification and verify the app-only hcs context before any start. Account
-   for observed color operations separately rather than inventing a transfer.
-5. Design bounded exact-byte cleanup for partial apply, cancellation,
-   disconnect, stop, natural completion, and reconnect. Restoring hcs may
-   reload runtime fields, so verify resulting context and original runtime
-   bytes explicitly. This trace proves neither that reload nor its ordering;
-   no automatic cleanup recipe is authorized by these observations. Failure
-   must invalidate start readiness and remain visible; preserve Stop access.
-6. Define named wire-mode mapping separately from legacy JSON enum ordinals
-   (`Standard`, `High`, `Max`, `XL`). Do not silently reinterpret saved intent
-   as Smooth/Bold/Intense/Extreme. Review serialization compatibility and UI
-   labels explicitly. Only two runtime values were directly written here.
-7. Test exact path/flags/order/readback, FF handling, no persistent writes,
-   stale/busy preflight, mismatch/lost reply, partial failure and independent
-   cleanup timeout, restored originals and Stop availability before device
-   validation. A later bounded manual validation is separate from broad
-   production enablement; no probe or implementation was built/run here.
+Current transaction, recovery and admission behavior is described in the
+[runtime implementation](VAPOR-RUNTIME-IMPLEMENTATION-2026-10-20.md). This capture
+establishes wire observations, not a general cleanup contract or broader
+firmware admission.
 
 ## Integrity and retained private evidence
 
@@ -189,8 +154,3 @@ independently observed. Encoded clock times remain six hours behind the
 independent phone/host clock; the correct BTSnoop epoch is used, without an
 asserted absolute correction. Order/intervals support this analysis.
 
-The private report is `app-only-session-sanitized-report.json`, supported by
-`session-safe-pairs.json`, `composite-event-analysis.json`, validation reports,
-and target correlation. The
-archive filename `session-in-progress.zip` is historical: the user clarified
-both sessions had completed before their initial report/export began.

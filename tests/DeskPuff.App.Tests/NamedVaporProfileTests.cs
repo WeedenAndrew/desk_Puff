@@ -17,7 +17,7 @@ public sealed class NamedVaporProfileTests
         {
             FakeDeviceClient client = new(); await client.DisconnectAsync(CancellationToken.None);
             await using SessionController controller = new(client, new DeviceSafetyPolicy());
-            await using MainViewModel viewModel = new(controller, false, root);
+            await using MainViewModel viewModel = new(controller, root, preferencesPath: Path.Combine(root, "preferences.json"));
             await viewModel.InitializeAsync(); viewModel.NewHeatingProfileCommand.Execute(null);
             Assert.AreEqual(SessionVaporMode.Smooth, viewModel.EditorVaporMode);
             viewModel.HeatingProfileName = "named"; viewModel.EditorVapor = VaporLevel.Max; viewModel.EditorVaporMode = SessionVaporMode.Intense;
@@ -41,8 +41,8 @@ public sealed class NamedVaporProfileTests
         {
             FakeDeviceClient client = new();
             await using SessionController controller = new(client, new DeviceSafetyPolicy());
-            await using MainViewModel viewModel = new(controller, true, root);
-            await viewModel.InitializeAsync();
+            await using MainViewModel viewModel = new(controller, root, preferencesPath: Path.Combine(root, "preferences.json"));
+            await TestDeviceSetup.InitializeConnectedAsync(viewModel);
             viewModel.NewHeatingProfileCommand.Execute(null);
             viewModel.HeatingProfileName = "named";
             viewModel.EditorVaporMode = SessionVaporMode.Bold;
@@ -82,8 +82,8 @@ public sealed class NamedVaporProfileTests
             }, null, CancellationToken.None);
             FakeDeviceClient client = new();
             await using SessionController controller = new(client, new DeviceSafetyPolicy());
-            await using MainViewModel viewModel = new(controller, true, root);
-            await viewModel.InitializeAsync(); viewModel.ApplyHeatingProfileCommand.Execute(null);
+            await using MainViewModel viewModel = new(controller, root, preferencesPath: Path.Combine(root, "preferences.json"));
+            await TestDeviceSetup.InitializeConnectedAsync(viewModel); viewModel.ApplyHeatingProfileCommand.Execute(null);
             Assert.IsNull(viewModel.EditorVaporMode);
             Assert.AreEqual(VaporLevel.Max, viewModel.EditorVapor);
             Assert.IsFalse(viewModel.StartStopCommand.CanExecute(null));

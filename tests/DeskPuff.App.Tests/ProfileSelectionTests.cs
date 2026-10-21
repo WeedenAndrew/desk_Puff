@@ -29,7 +29,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client, Saved("Morning"), Saved("Evening"));
 
         ObservableCollection<ProfileSelectionOption> order = viewModel.SelectableProfiles;
@@ -50,7 +50,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client, Saved("Morning"), Saved("Evening"));
 
         Assert.AreEqual(0, viewModel.SelectedProfileIndex);
@@ -64,7 +64,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client, Saved("Morning"), Saved("Evening"));
         await viewModel.SelectProfileAtAsync(5, CancellationToken.None);
         Assert.AreEqual(5, viewModel.SelectedProfileIndex);
@@ -81,7 +81,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client, Saved("Morning"), Saved("Evening"));
         await viewModel.SelectProfileAtAsync(0, CancellationToken.None);
         Assert.AreEqual(0, viewModel.SelectedProfileIndex);
@@ -98,7 +98,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client, Saved("Morning"), Saved("Evening"));
 
         await viewModel.SelectProfileAtAsync(5, CancellationToken.None);
@@ -116,7 +116,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client, Saved("Morning"), Saved("Evening", durationSeconds: 55));
 
         await viewModel.SelectProfileAtAsync(5, CancellationToken.None);
@@ -131,7 +131,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client, Saved("Morning"));
 
         await viewModel.SelectProfileAtAsync(2, CancellationToken.None);
@@ -148,7 +148,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client, Saved("Morning"), Saved("Evening"));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
         Assert.AreEqual(ProfileSource.Saved, viewModel.SelectedProfile!.Source);
@@ -165,7 +165,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client, Saved("Scorcher", celsius: 400));
 
         await Assert.ThrowsExactlyAsync<DeviceSafetyException>(
@@ -181,7 +181,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client);
 
         Assert.HasCount(4, viewModel.SelectableProfiles);
@@ -195,7 +195,7 @@ public sealed class ProfileSelectionTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, client);
 
         await viewModel.MoveProfileSelectionAsync(-1, CancellationToken.None);
@@ -231,7 +231,7 @@ public sealed class ProfileSelectionTests
         FakeDeviceClient client,
         params HeatingProfileOption[] savedProfiles)
     {
-        await viewModel.InitializeAsync();
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
 
         // The library load is disk-backed; replace its result with a known list so
         // the order under test does not depend on what is on this machine.

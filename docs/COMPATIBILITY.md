@@ -29,9 +29,10 @@ failure checks, and the evidence template, follow
 
 1. Make sure the device is cool, charged, idle, and within reach of its physical
    stop control.
-2. Run `desk_Puff.exe` normally and choose **Scan again**.
-3. Connect only to a base you own. Version 0.1 will authenticate and read state
-   but will remain visibly locked in read-only mode.
+2. Run `desk_Puff.exe --trace-writes` and choose **Scan again**.
+3. Connect only to a base you own. Unknown firmware stays read-only; an admitted identity can show control
+   enabled. During this read-only procedure, use only reads and retain trace
+   mode as a transport-level write guard.
 4. In Settings, record only the displayed family, model code, firmware, chamber
    type, and whether battery/temperature/state appear plausible.
 5. Do not publish a serial number, Bluetooth address, pairing record, or packet

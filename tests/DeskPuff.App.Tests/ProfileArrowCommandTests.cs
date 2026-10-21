@@ -34,7 +34,7 @@ public sealed class ProfileArrowCommandTests
         FakeDeviceClient client = new();
         client.SetProfiles([OnlyProfile()]);
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel);
 
         Assert.HasCount(1, viewModel.SelectableProfiles);
@@ -48,7 +48,7 @@ public sealed class ProfileArrowCommandTests
         FakeDeviceClient client = new();
         client.SetProfiles([OnlyProfile()]);
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel);
         viewModel.SavedHeatingProfiles.Add(Saved("Morning"));
 
@@ -62,7 +62,7 @@ public sealed class ProfileArrowCommandTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel);
 
         Assert.HasCount(4, viewModel.SelectableProfiles);
@@ -75,7 +75,7 @@ public sealed class ProfileArrowCommandTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
 
         Assert.IsFalse(viewModel.PreviousProfileCommand.CanExecute(null));
         Assert.IsFalse(viewModel.NextProfileCommand.CanExecute(null));
@@ -86,7 +86,7 @@ public sealed class ProfileArrowCommandTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         Assert.AreEqual(0, viewModel.SelectedProfileIndex);
 
@@ -103,7 +103,7 @@ public sealed class ProfileArrowCommandTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         Assert.AreEqual(0, viewModel.SelectedProfileIndex);
 
@@ -121,7 +121,7 @@ public sealed class ProfileArrowCommandTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
         Assert.AreEqual(4, viewModel.SelectedProfileIndex);
@@ -138,7 +138,7 @@ public sealed class ProfileArrowCommandTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"), Saved("Evening"));
         Assert.AreEqual(0, viewModel.SelectedProfileIndex);
 
@@ -173,7 +173,7 @@ public sealed class ProfileArrowCommandTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel);
 
         Assert.IsTrue(await viewModel.HandleShortcutAsync(viewModel.PreviousProfileKey));
@@ -220,7 +220,7 @@ public sealed class ProfileArrowCommandTests
         MainViewModel viewModel,
         params HeatingProfileOption[] savedProfiles)
     {
-        await viewModel.InitializeAsync();
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
         viewModel.SavedHeatingProfiles.Clear();
         foreach (HeatingProfileOption savedProfile in savedProfiles)
         {

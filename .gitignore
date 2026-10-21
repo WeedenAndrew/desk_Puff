@@ -30,3 +30,11 @@ notes/
 
 # Staged for deletion, reviewed by hand before it goes. See remove/README.md.
 remove/
+
+# Generated UI build state and private protocol captures
+.avalonia-build-tasks/
+*.pcap
+*.pcapng
+*.btsnoop
+bugreport*.zip
+tools/capture/frames-*.jsonl

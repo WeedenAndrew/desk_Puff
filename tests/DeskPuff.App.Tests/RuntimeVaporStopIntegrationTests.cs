@@ -23,8 +23,8 @@ public sealed class RuntimeVaporStopIntegrationTests
             Wire wire = new();
             LoraxDeviceClient client = new(wire);
             await using SessionController controller = new(client, new DeviceSafetyPolicy());
-            await using MainViewModel viewModel = new(controller, true, root);
-            await viewModel.InitializeAsync();
+            await using MainViewModel viewModel = new(controller, root, preferencesPath: Path.Combine(root, "preferences.json"));
+            await TestDeviceSetup.InitializeConnectedAsync(viewModel);
             Assert.IsFalse(viewModel.StatusIsError, viewModel.StatusText);
             viewModel.SavedHeatingProfiles.Add(new("named", "named", 220, 60, VaporLevel.Standard, 5, 10, "blue", ["#0000FF"]) { VaporMode = SessionVaporMode.Bold });
             await viewModel.SelectProfileAtAsync(4, CancellationToken.None);

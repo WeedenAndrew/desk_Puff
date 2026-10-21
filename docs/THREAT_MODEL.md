@@ -14,15 +14,15 @@
 
 | Risk | Mitigation |
 | --- | --- |
-| Unknown firmware receives a write | Empty verified-firmware allowlist plus policy tests |
+| Unknown firmware receives a write | Exact verified model/firmware admission, recorded limits and policy tests |
 | A UI change bypasses safety | Controls call only typed operations; policy is below the UI |
 | Lost BLE reply duplicates a command | State-changing commands are at-most-once and never retried |
 | Concurrent reads and writes interleave | One session command gate and one transport command gate |
 | Malicious or accidental path reaches firmware/files | Exact write-path allowlist and restricted opcode enum |
 | Invalid heat/profile values are encoded | Device-limit sanity checks plus conservative absolute caps |
-| Malformed or oversized profile lighting reaches the UI/device | 512-byte CBOR cap, bounded parser depth/collections, one-to-four RGB policy, exact path allowlist, and decoded read-back |
+| Malformed or oversized profile lighting reaches the UI/device | 4096-byte CBOR cap, bounded parser, separate display/write palette limits, exact path allowlist, byte-preserving edits and whole-document read-back |
 | Malformed or hostile local profile JSON affects the app/device | Separate 16 KiB-capped documents, schema and value validation, traversal-safe filenames, reparse-point rejection, atomic saves, malformed-file isolation, and a separate safety-gated device-write action |
-| Repeated boosts run without bound | Device limit capped again at four boosts per session |
+| Repeated boosts run without bound | Per-type count, per-hit and cumulative temperature/time ceilings |
 | User-configured quick hit exceeds safe limits | Save-time validation plus per-command amount, cumulative temperature, and cumulative duration checks |
 | Personal device data is collected | No cloud, analytics, account, serial-number read, or address log. Held by absence of a call: reads are not allowlisted, only writes are |
 | A substituted helper binary is launched | Fixed path under the application directory; `PATH`, working directory, and environment are not consulted |
@@ -33,8 +33,9 @@
 ## Residual risks
 
 The Lorax protocol has no public manufacturer specification, Windows Bluetooth
-drivers vary, and physical device behavior has not yet been validated. Therefore
-version 0.1 makes no real-device write available. Future signed releases will
+drivers vary, and physical validation covers only the narrow recorded tuple and
+operations. Unknown firmware stays read-only; vapor capture and software tests do not establish broader certification or
+complete recovery validation. Future signed releases will
 also require a protected code-signing process; current local development builds
 are unsigned and Windows may show a reputation warning.
 

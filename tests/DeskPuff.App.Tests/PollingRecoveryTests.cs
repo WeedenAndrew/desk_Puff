@@ -31,9 +31,9 @@ public sealed class PollingRecoveryTests
         // proves that a good refresh resets the consecutive-failure counter.
         client.QueueRefreshFailures(true, false, true, true, true);
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
 
-        await viewModel.InitializeAsync();
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
         await WaitForAsync(() =>
             !viewModel.IsConnected &&
             viewModel.StatusText == "Device disconnected after repeated communication failures");

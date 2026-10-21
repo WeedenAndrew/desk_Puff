@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using DeskPuff.App.Devices;
 using DeskPuff.App.ViewModels;
 using DeskPuff.Bluetooth.Windows;
 using DeskPuff.Core.Devices;
@@ -23,21 +22,16 @@ public sealed partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             string[] arguments = desktop.Args ?? [];
-            bool demoMode = arguments.Any(argument =>
-                string.Equals(argument, "--demo", StringComparison.OrdinalIgnoreCase));
             bool traceWrites = arguments.Any(argument =>
                 string.Equals(argument, "--trace-writes", StringComparison.OrdinalIgnoreCase));
             diagnosticLog = FileDiagnosticLog.CreateBesideExecutable();
             diagnosticLog.Write(
-                $"APPLICATION START demoMode={demoMode} traceWrites={traceWrites}");
-            IDeviceClient client = demoMode
-                ? new DemoDeviceClient()
-                : new LoraxDeviceClient(diagnosticLog, traceWrites);
+                $"APPLICATION START traceWrites={traceWrites}");
+            IDeviceClient client = new LoraxDeviceClient(diagnosticLog, traceWrites);
             SessionController controller = new(client, new DeviceSafetyPolicy(), diagnosticLog,
                 sessionOverrides: client as ISessionOverrideClient);
             MainViewModel viewModel = new(
                 controller,
-                demoMode,
                 profileLibraryRoot: null,
                 diagnostics: diagnosticLog);
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;

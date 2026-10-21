@@ -9,6 +9,11 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (!AreArgumentsSupported(args))
+        {
+            return 2;
+        }
+
         bool driveProbe = args.Any(argument => string.Equals(argument, "--probe-thc-drive", StringComparison.OrdinalIgnoreCase));
         bool idleProbe = args.Any(argument => string.Equals(argument, "--probe-thc", StringComparison.OrdinalIgnoreCase));
         bool mcProbe = args.Any(argument => string.Equals(argument, "--probe-thc-mc", StringComparison.OrdinalIgnoreCase));
@@ -34,6 +39,12 @@ internal static class Program
         }
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
+
+    internal static bool AreArgumentsSupported(IEnumerable<string> args) => args.All(argument =>
+        string.Equals(argument, "--trace-writes", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(argument, "--probe-thc", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(argument, "--probe-thc-drive", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(argument, "--probe-thc-mc", StringComparison.OrdinalIgnoreCase));
 
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()

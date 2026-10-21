@@ -18,6 +18,8 @@ internal sealed class FakeDeviceClient : IDeviceClient
 
     public event EventHandler<DeviceSnapshot>? SnapshotChanged;
 
+    public int ConnectCallCount { get; private set; }
+
     public int SelectProfileCallCount { get; private set; }
 
     public int UpdateProfileCallCount { get; private set; }
@@ -95,8 +97,11 @@ internal sealed class FakeDeviceClient : IDeviceClient
         CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<DeviceCandidate>>([new DeviceCandidate("fake", "Fake Peak", -40)]);
 
-    public Task ConnectAsync(DeviceCandidate candidate, CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+    public Task ConnectAsync(DeviceCandidate candidate, CancellationToken cancellationToken)
+    {
+        ConnectCallCount++;
+        return Task.CompletedTask;
+    }
 
     public Task DisconnectAsync(CancellationToken cancellationToken)
     {

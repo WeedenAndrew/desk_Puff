@@ -36,7 +36,7 @@ public sealed class SessionOverrideTests
         RecordingOverrideClient overrides = new();
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning", celsius: 210, durationSeconds: 65));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
 
@@ -65,7 +65,7 @@ public sealed class SessionOverrideTests
         RecordingOverrideClient overrides = new();
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Evening", vapor: VaporLevel.Max));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
 
@@ -82,7 +82,7 @@ public sealed class SessionOverrideTests
         RecordingOverrideClient overrides = new();
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
 
         await StartAsync(viewModel);
@@ -97,7 +97,7 @@ public sealed class SessionOverrideTests
         RecordingOverrideClient overrides = new();
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
         await StartAsync(viewModel);
@@ -122,7 +122,7 @@ public sealed class SessionOverrideTests
         RecordingOverrideClient overrides = new();
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         // 320 C is 608 F: inside the safety policy's 327 C envelope, above ours.
         await ConnectAsync(viewModel, Saved("Scorcher", celsius: 320));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
@@ -140,7 +140,7 @@ public sealed class SessionOverrideTests
         RecordingOverrideClient overrides = new();
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         // 315.5 C is a shade under 600 F.
         await ConnectAsync(viewModel, Saved("Hot", celsius: 315.5));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
@@ -157,7 +157,7 @@ public sealed class SessionOverrideTests
         RecordingOverrideClient overrides = new();
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Marathon", durationSeconds: 121));
 
         // The 2:00 session ceiling is the safety policy's own absolute maximum,
@@ -176,7 +176,7 @@ public sealed class SessionOverrideTests
         RecordingOverrideClient overrides = new();
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("TwoMinutes", durationSeconds: 120));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
 
@@ -193,7 +193,7 @@ public sealed class SessionOverrideTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
 
@@ -241,7 +241,7 @@ public sealed class SessionOverrideTests
         MainViewModel viewModel,
         params HeatingProfileOption[] savedProfiles)
     {
-        await viewModel.InitializeAsync();
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
         viewModel.SavedHeatingProfiles.Clear();
         foreach (HeatingProfileOption savedProfile in savedProfiles)
         {

@@ -70,10 +70,11 @@ internal static class UserPreferencesStore
 
     public static async Task<UserPreferences> LoadAsync(
         CancellationToken cancellationToken,
-        IDiagnosticLog? diagnostics = null)
+        IDiagnosticLog? diagnostics = null,
+        string? pathOverride = null)
     {
         IDiagnosticLog diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
-        string path = PreferencesPath();
+        string path = pathOverride ?? PreferencesPath();
         try
         {
             FileInfo file = new(path);
@@ -107,10 +108,11 @@ internal static class UserPreferencesStore
     public static async Task SaveAsync(
         UserPreferences preferences,
         CancellationToken cancellationToken,
-        IDiagnosticLog? diagnostics = null)
+        IDiagnosticLog? diagnostics = null,
+        string? pathOverride = null)
     {
         IDiagnosticLog diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
-        string path = PreferencesPath();
+        string path = pathOverride ?? PreferencesPath();
         string directory = Path.GetDirectoryName(path) ??
             throw new InvalidOperationException("The preferences path has no directory.");
         Directory.CreateDirectory(directory);

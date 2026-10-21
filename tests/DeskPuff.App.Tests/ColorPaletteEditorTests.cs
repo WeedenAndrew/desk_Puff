@@ -52,8 +52,8 @@ public sealed class ColorPaletteEditorTests
                 .. profiles.Skip(1),
             ]);
             await using SessionController controller = new(client, new DeviceSafetyPolicy());
-            await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
-            await viewModel.InitializeAsync();
+            await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
+            await TestDeviceSetup.InitializeConnectedAsync(viewModel);
             viewModel.ShowColorCommand.Execute(null);
 
             Assert.AreEqual("COLOR 1 OF 25", viewModel.ColorStopPositionText);

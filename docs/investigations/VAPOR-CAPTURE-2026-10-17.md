@@ -103,17 +103,8 @@ service/characteristic UUIDs were not independently observed in this capture.
 The correct BTSnoop epoch `0x00DCDDB30F2F8000` was used. Encoded times appear
 six hours behind the independent phone/host wall clock; no absolute correction
 is asserted. Record ordering and elapsed intervals support the comparison.
-Private sanitized analysis files are `baseline-sanitized-report.json`,
-`comparison-sanitized-report.json`, `safe-vapor-pairs.json`, and
-`field-comparison.json` in their respective ignored capture folders. The
-analysis does not establish an independent cryptographic/device identity.
+## Scope
 
-## Next boundary
-
-Temporary session vapor remains unsupported. A separate controlled official-app
-capture must actually demonstrate a temporary-session operation, its runtime
-write path/format, success/readback, lifecycle, and restoration behavior before
-such support can be designed. If the official app offers only slot editing,
-that limitation remains explicit. Firmware identity and additional mode values
-also require direct evidence. No additional capture, heat, or write is
-authorized by this document itself.
+This record establishes persistent-slot behavior only. Later runtime-session
+evidence is recorded [separately](VAPOR-APP-ONLY-SESSION-2026-10-17.md). Neither
+record independently establishes firmware identity or broad device support.

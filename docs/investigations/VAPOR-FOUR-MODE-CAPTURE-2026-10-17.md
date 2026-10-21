@@ -97,19 +97,11 @@ identify the target; cached GATT UUID discovery was not independently observed.
 Encoded timestamps still appear six hours behind the independent phone/host
 clock despite the correct BTSnoop epoch. No absolute correction is asserted.
 Order and elapsed intervals are used; experiment receipt markers are not exact
-action timestamps. The private sanitized report is
-`four-mode-sanitized-report.json`, with `safe-vapor-pairs.json`,
-`field-comparison.json`, and `target-command-structure.json` alongside it.
+action timestamps.
 
-## Next experimental boundary
+## Scope
 
-All four official labels now have an observed persistent-slot mapping on this
-device. No additional mode-order guessing is needed. A temporary-session
-implementation still needs a distinct reviewable experiment: either observe
-an actual official-app temporary operation, or separately authorize a bounded
-idle runtime write/readback/restore probe after its implementation and tests
-are reviewed. That design must declare the unproven runtime write/flags
-hypothesis, snapshot originals and slot values, verify unchanged slots and
-heating parameters, restore exact original bytes with bounded cleanup, and
-stop on unexpected results. It must not heat, silently mutate persistent slots,
-or broadly unlock unverified firmware. No such probe was built or run here.
+The four persistent-slot mappings are observed on this device. The attempted
+idle selection remains inconclusive. Later direct runtime-session evidence is
+recorded [separately](VAPOR-APP-ONLY-SESSION-2026-10-17.md); capture findings do
+not by themselves broaden production admission.

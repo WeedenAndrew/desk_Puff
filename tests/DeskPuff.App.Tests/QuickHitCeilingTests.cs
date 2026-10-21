@@ -35,7 +35,7 @@ public sealed class QuickHitCeilingTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await StartHeatingAsync(viewModel, client);
 
         // 40 F is well past the ceiling, and past what the device would take.
@@ -51,7 +51,7 @@ public sealed class QuickHitCeilingTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await StartHeatingAsync(viewModel, client);
 
         viewModel.QuickHitTimeSeconds = 45;
@@ -66,7 +66,7 @@ public sealed class QuickHitCeilingTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await StartHeatingAsync(viewModel, client);
 
         viewModel.QuickHitTemperature = 9;
@@ -80,7 +80,7 @@ public sealed class QuickHitCeilingTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await StartHeatingAsync(viewModel, client);
 
         viewModel.QuickHitTimeSeconds = 10;
@@ -91,7 +91,7 @@ public sealed class QuickHitCeilingTests
 
     private static async Task StartHeatingAsync(MainViewModel viewModel, FakeDeviceClient client)
     {
-        await viewModel.InitializeAsync();
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
         client.BeginHeating(200, TimeSpan.FromSeconds(40), TimeSpan.Zero);
         viewModel.ApplySnapshot(client.Snapshot);
         Assert.IsTrue(viewModel.CanBoost, "The quick hits need a running session.");

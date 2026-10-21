@@ -11,9 +11,9 @@ The device firmware remains authoritative for heater control.
 - Commands are serialized and state-changing commands use at-most-once delivery.
 - Lost replies cause a state read, never an automatic retry.
 - Profile values are validated before encoding and verified by read-back.
-- Profile lighting accepts one to four RGB colors. CBOR reads are capped at 512
-  bytes and parsed with bounded depth and collection sizes; writes use the exact
-  allowlisted profile-color path and require decoded color read-back.
+- Profile lighting accepts one to four RGB colors. CBOR reads are capped at 4,096
+  bytes and parsed with bounded depth and collection sizes; supported edits patch
+  the existing document and require full-document read-back.
 - Heating is never scheduled, resumed, or initiated in the background.
 - Profile switching and editing are disabled during heating.
 - Local color and heating presets are separate, size-bounded JSON documents.
@@ -23,7 +23,7 @@ The device firmware remains authoritative for heater control.
   action revalidates the entire pair against current hardware state and limits.
 - Configurable quick-hit amounts are validated when saved and again on every
   press. Per-hit device limits, cumulative target/session limits, and the
-  four-hit application cap are independent gates.
+  application count cap are independent gates.
 - Device handoff is disabled during heating and accepts only nearby candidates
   that advertise as Peak e-rigs. The source is released before the destination
   uses normal Windows pairing and Puffco authentication; connection takeover
@@ -45,16 +45,17 @@ The device firmware remains authoritative for heater control.
 A stage must pass before the next begins. Hardware validation results belong in
 `docs/compatibility/` without serial numbers or Bluetooth addresses.
 
-## Version 0.1 control lock
+## Current control admission
 
-The hardware-verified firmware allowlist is intentionally empty. Device limits
-are also left unavailable until their response encoding is confirmed on owned
-hardware. Either condition independently blocks every write. This means the
-first physical test can inspect discovery and telemetry but cannot start heat,
-stop heat, select or edit a profile, boost, or change lighting.
+The existing verified model 13 / AN tuple has recorded limits and narrowly enabled
+control. Other identities remain read-only. Named temporary vapor additionally
+requires API 39, a 3DXL chamber and fresh runtime/ownership checks; user-reported
+AW identity is not an alias for AN. The compatibility evidence and runtime
+implementation notes distinguish captured behavior, software tests and physical
+validation. Capture or software-test success does not create a new allowlist entry.
 
-The demo client is the only version 0.1 client with controls enabled. It has no
-Bluetooth dependency and cannot address physical hardware.
+The simulator lives only in test support. The production executable has no demo
+startup path or simulator-based safety exemption.
 
 ## Safe device handoff
 

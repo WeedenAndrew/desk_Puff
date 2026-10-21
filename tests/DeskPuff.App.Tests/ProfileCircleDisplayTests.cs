@@ -33,7 +33,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
 
         Assert.AreEqual("CLASSIC", viewModel.ProfileName);
@@ -48,7 +48,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning", celsius: 210, durationSeconds: 65));
 
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
@@ -65,7 +65,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
 
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
@@ -78,7 +78,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
         Assert.IsTrue(viewModel.SavedProfileCaptionVisibility);
@@ -96,7 +96,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning", celsius: 210, durationSeconds: 65));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
         Assert.AreEqual("210°", viewModel.TemperatureText);
@@ -121,7 +121,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
         Assert.AreEqual("#22FF88", viewModel.ActiveProfileColor);
@@ -139,7 +139,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
 
         Assert.AreEqual("START", viewModel.StartStopText);
@@ -158,7 +158,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         Assert.IsTrue(viewModel.CanStartOrStop);
         Assert.IsTrue(viewModel.StartStopCommand.CanExecute(null));
@@ -182,7 +182,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         await viewModel.SelectProfileAtAsync(4, CancellationToken.None);
 
@@ -202,7 +202,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
 
         ProfileSelectionOption savedChip = viewModel.SelectableProfiles[4];
@@ -221,7 +221,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
         Assert.AreEqual(0, viewModel.SelectedProfileIndex);
 
@@ -239,7 +239,7 @@ public sealed class ProfileCircleDisplayTests
     {
         FakeDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, demoMode: true, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await ConnectAsync(viewModel, Saved("Morning"));
 
         viewModel.SelectedProfile = viewModel.SelectableProfiles[4];
@@ -279,7 +279,7 @@ public sealed class ProfileCircleDisplayTests
         MainViewModel viewModel,
         params HeatingProfileOption[] savedProfiles)
     {
-        await viewModel.InitializeAsync();
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
 
         // Assert in Celsius so the expected values read as the stored values.
         if (viewModel.UseFahrenheit)

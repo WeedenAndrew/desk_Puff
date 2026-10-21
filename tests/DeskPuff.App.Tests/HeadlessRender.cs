@@ -4,7 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
-using DeskPuff.App.Devices;
+using DeskPuff.App.Tests.Support;
 using DeskPuff.App.ViewModels;
 using DeskPuff.Core.Safety;
 using DeskPuff.Core.Sessions;
@@ -13,8 +13,8 @@ namespace DeskPuff.App.Tests;
 
 /// <summary>
 /// Renders the real window offscreen so a test can look at pixels. The app is
-/// built from the same pair <c>App.OnFrameworkInitializationCompleted</c> uses
-/// for <c>--demo</c>, so nothing here opens Bluetooth or addresses hardware.
+/// given a test-only simulated client; shipping startup has no simulator.
+/// Nothing here opens Bluetooth or addresses hardware.
 /// </summary>
 internal static class HeadlessRender
 {
@@ -85,12 +85,12 @@ internal static class HeadlessRender
             Path.GetTempPath(),
             "desk-puff-render",
             Guid.NewGuid().ToString("N"));
-        DemoDeviceClient client = new();
+        SimulatedDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: client);
         await using MainViewModel viewModel = new(
             controller,
-            demoMode: true,
-            profileLibraryRoot: library);
+            profileLibraryRoot: library,
+            preferencesPath: Path.Combine(library, "preferences.json"));
         MainWindow window = new(viewModel);
         window.Width = WindowWidth;
         window.Height = WindowHeight;
@@ -101,6 +101,8 @@ internal static class HeadlessRender
 
             // The window's Opened handler kicks off initialization; wait for the
             // demo device to be connected rather than guessing at a delay.
+            await SettleAsync(window, () => viewModel.SelectedCandidate is not null);
+            await viewModel.ConnectAsync(CancellationToken.None);
             await SettleAsync(window, () => viewModel.IsConnected);
 
             if (drive is not null)

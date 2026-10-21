@@ -1,8 +1,8 @@
 using DeskPuff.Core.Devices;
 
-namespace DeskPuff.App.Devices;
+namespace DeskPuff.App.Tests.Support;
 
-internal sealed class DemoDeviceClient : IDeviceClient, ISessionOverrideClient
+internal sealed class SimulatedDeviceClient : IDeviceClient, ISessionOverrideClient
 {
     private readonly List<HeatProfile> profiles =
     [

@@ -1,4 +1,4 @@
-using DeskPuff.App.Devices;
+using DeskPuff.App.Tests.Support;
 using DeskPuff.App.ViewModels;
 using DeskPuff.Core.Devices;
 using DeskPuff.Core.Profiles;
@@ -32,8 +32,8 @@ public sealed class SavedVaporCapabilityTests
         client.SetChamber(ChamberKind.ThreeD);
         Overrides overrides = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: overrides);
-        await using MainViewModel viewModel = new(controller, true, rootPath);
-        await viewModel.InitializeAsync();
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
         viewModel.ApplyHeatingProfileCommand.Execute(null);
         Assert.AreEqual(ProfileSource.Saved, viewModel.SelectedProfile!.Source);
         Assert.AreEqual(vapor, viewModel.EditorVapor);
@@ -83,7 +83,7 @@ public sealed class SavedVaporCapabilityTests
         FakeDeviceClient client = new();
         await client.DisconnectAsync(CancellationToken.None);
         await using SessionController controller = new(client, new DeviceSafetyPolicy());
-        await using MainViewModel viewModel = new(controller, false, rootPath);
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
         await viewModel.InitializeAsync();
         viewModel.NewHeatingProfileCommand.Execute(null);
         viewModel.EditorVapor = VaporLevel.XL;
@@ -101,10 +101,10 @@ public sealed class SavedVaporCapabilityTests
     {
         LocalProfileLibrary library = new(rootPath);
         await library.SaveHeatingAsync(Profile(VaporLevel.High) with { VaporMode = SessionVaporMode.Intense }, null, CancellationToken.None);
-        DemoDeviceClient client = new();
+        SimulatedDeviceClient client = new();
         await using SessionController controller = new(client, new DeviceSafetyPolicy(), sessionOverrides: client);
-        await using MainViewModel viewModel = new(controller, true, rootPath);
-        await viewModel.InitializeAsync();
+        await using MainViewModel viewModel = new(controller, rootPath, preferencesPath: Path.Combine(rootPath, "preferences.json"));
+        await TestDeviceSetup.InitializeConnectedAsync(viewModel);
         viewModel.ApplyHeatingProfileCommand.Execute(null);
         Assert.IsTrue(viewModel.StartStopCommand.CanExecute(null));
         Assert.AreEqual(string.Empty, viewModel.SavedSessionRestriction);

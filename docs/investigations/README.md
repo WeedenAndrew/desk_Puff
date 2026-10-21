@@ -1,27 +1,14 @@
-# Investigations
+# Protocol evidence
 
-Working material from protocol and hardware investigations: the staged prompts
-that drove each one, and the run cards used at the device.
+[Protocol notes](PROTOCOL-NOTES.md) summarize formats and capture requirements.
+Current control admission is described in [compatibility](../COMPATIBILITY.md).
 
-These are **process records, not specifications.** They contain superseded
-reasoning, hypotheses that turned out wrong, and predictions made before the
-evidence arrived — deliberately, because the corrections are the useful part.
-Anything load-bearing is promoted out of here:
-
-| finding | lives in |
+| Record | Scope |
 |---|---|
-| validated hardware behaviour | `docs/compatibility/` |
-| limit values and their provenance | `CompatibilityCatalog.cs` |
-| the verification ladder | `docs/SAFETY.md` |
+| [Vapor capture, 2026-10-17](VAPOR-CAPTURE-2026-10-17.md) | Opposite persistent-slot Bold/Extreme edits and readbacks |
+| [Four-mode capture, 2026-10-17](VAPOR-FOUR-MODE-CAPTURE-2026-10-17.md) | Four label/value mappings; inconclusive idle selection |
+| [App-only capture, 2026-10-17](VAPOR-APP-ONLY-SESSION-2026-10-17.md) | Runtime writes, temporary context and streamed lifecycle |
+| [Runtime implementation](VAPOR-RUNTIME-IMPLEMENTATION-2026-10-20.md) | Current transaction/recovery behavior and validation limits |
 
-So do not cite a file here as authority for how the device behaves. If a claim
-matters, it should already be somewhere in the table above; if it is only here,
-it has not been established yet.
-
-| file | investigation |
-|---|---|
-| `PROMPT-CBOR-LIMITS.md` | the CBOR reader, and what the `GetLimits` numbers mean. Established 125 as the maximum read payload and `0x7A` as the limit-exceeded status. 40 and 8 are still unidentified. |
-| `PROMPT-BOOST.md` | the first real device write — boost, from stub to trace to hardware. |
-| `WALKTHROUGH-BOOST-TRACE.md` | build, assemble and run the suppressed-write trace. |
-| `PROMPT-BOOST-STAGE3.md` | boost validation, the shared counter it exposed, and the per-type split. Its Stage 2 text is corrected by its own Stage 2b — read both. |
-| `RUNCARD-BOOST-30S.md` | the run card for the 2026-09-12 validation. Abort first, `btim` gate at step 0. |
+Dated observations apply to their captured device and action. They do not
+broaden firmware admission. Raw captures and identifying metadata are excluded.

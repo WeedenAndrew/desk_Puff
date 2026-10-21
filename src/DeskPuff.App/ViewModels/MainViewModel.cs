@@ -394,9 +394,9 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     ];
 
     private readonly SessionController controller;
+    private readonly string? preferencesPath;
     private readonly IDiagnosticLog diagnosticLog;
     private readonly LocalProfileLibrary profileLibrary;
-    private readonly bool demoMode;
     private readonly List<AsyncRelayCommand> asyncCommands = [];
     private readonly List<RelayCommand> relayCommands = [];
     private CancellationTokenSource? pollingCancellation;
@@ -443,17 +443,15 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     internal MainViewModel(
         SessionController controller,
-        bool demoMode,
         string? profileLibraryRoot = null,
-        IDiagnosticLog? diagnostics = null)
+        IDiagnosticLog? diagnostics = null,
+        string? preferencesPath = null)
     {
+        this.preferencesPath = preferencesPath;
         this.controller = controller;
         diagnosticLog = diagnostics ?? NullDiagnosticLog.Instance;
-        this.demoMode = demoMode;
         profileLibrary = new LocalProfileLibrary(
-            profileLibraryRoot ?? (demoMode
-                ? Path.Combine(Path.GetTempPath(), "desk_Puff", "demo-profiles")
-                : LocalProfileLibrary.DefaultRootPath()),
+            profileLibraryRoot ?? LocalProfileLibrary.DefaultRootPath(),
             diagnosticLog);
         snapshot = controller.Snapshot;
         controller.SnapshotChanged += ControllerSnapshotChanged;
@@ -1063,7 +1061,6 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
-    public bool IsDemoMode => demoMode;
 
     public bool IsConnected => snapshot.ConnectionState is
         DeviceConnectionState.ConnectedReadOnly or
@@ -1302,7 +1299,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 _ when IsConnected => DeviceModelText,
                 _ => "NO DEVICE",
             };
-            return demoMode ? $"DEMO • {connectionLabel}" : connectionLabel;
+            return connectionLabel;
         }
     }
 
@@ -1384,16 +1381,6 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         await RunUserOperationAsync(
             async cancellationToken =>
             {
-                if (demoMode)
-                {
-                    IReadOnlyList<DeviceCandidate> candidates = await controller.ScanAsync(
-                        TimeSpan.FromMilliseconds(1),
-                        cancellationToken);
-                    SelectedCandidate = candidates[0];
-                    await ConnectAsync(cancellationToken);
-                    return;
-                }
-
                 await ScanAsync(cancellationToken);
             },
             CancellationToken.None);
@@ -1498,7 +1485,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         StatusText = "Scanning nearby Bluetooth devices…";
         IReadOnlyList<DeviceCandidate> found = await controller.ScanAsync(
-            TimeSpan.FromSeconds(demoMode ? 0.1 : 6),
+            TimeSpan.FromSeconds(6),
             cancellationToken);
         Candidates.Clear();
         foreach (DeviceCandidate candidate in found)
@@ -1520,7 +1507,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         try
         {
             IReadOnlyList<DeviceCandidate> found = await controller.ScanAsync(
-                TimeSpan.FromSeconds(demoMode ? 0.1 : 6),
+                TimeSpan.FromSeconds(6),
                 cancellationToken);
             HotSwapCandidates.Clear();
             foreach (DeviceCandidate candidate in found)
@@ -1601,7 +1588,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
-    private async Task ConnectAsync(CancellationToken cancellationToken)
+    internal async Task ConnectAsync(CancellationToken cancellationToken)
     {
         DeviceCandidate candidate = SelectedCandidate ??
             throw new InvalidOperationException("Select a device before connecting.");
@@ -1820,7 +1807,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         UserPreferences preferences = await UserPreferencesStore.LoadAsync(
             cancellationToken,
-            diagnosticLog);
+            diagnosticLog,
+            preferencesPath);
         string savedAccentHex = preferences.AppAccentHex?.Trim() ?? string.Empty;
         string normalizedAccentHex = savedAccentHex.ToUpperInvariant();
         appAccentHex = IsHexColor(normalizedAccentHex) &&
@@ -2127,7 +2115,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             QuickHitTimeSeconds = QuickHitTimeSeconds,
             ProfileMacros = profileMacros.ToDictionary(item => item.Key, item => item.Value.ToString()),
         };
-        await UserPreferencesStore.SaveAsync(preferences, cancellationToken, diagnosticLog);
+        await UserPreferencesStore.SaveAsync(preferences, cancellationToken, diagnosticLog, preferencesPath);
         StatusText = "Appearance, controls, and macros saved";
     }
 

@@ -59,27 +59,18 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $publishDirectory = 'artifacts\publish\win-x64'
-          $bleDirectory = Join-Path $publishDirectory 'ble'
-
-          New-Item -ItemType Directory -Path $bleDirectory -Force | Out-Null
-          Copy-Item -LiteralPath 'native\desk-puff-ble\target\release\desk-puff-ble.exe' -Destination $bleDirectory -Force
-          Copy-Item -Path 'tools\capture\*' -Destination $publishDirectory -Force
-          Get-ChildItem -LiteralPath $publishDirectory -Filter '*.pdb' -File | Remove-Item -Force
-
-          $files = @(Get-ChildItem -LiteralPath $publishDirectory -Recurse -File | Sort-Object FullName)
-          foreach ($file in $files) {
-            $relativePath = [System.IO.Path]::GetRelativePath($publishDirectory, $file.FullName)
-            '{0}|{1}' -f $relativePath, $file.Length
-          }
-
-          $totalBytes = ($files | Measure-Object -Property Length -Sum).Sum
-          'TOTAL|{0}|{1}' -f $files.Count, $totalBytes
+          $runtimeLicenses = Get-ChildItem '.nuget/packages/microsoft.netcore.app.runtime.win-x64' -Directory |
+            Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          ./tools/release/Assemble-Release.ps1 `
+            -PublishDirectory 'artifacts/publish/win-x64' `
+            -HelperPath 'native/desk-puff-ble/target/release/desk-puff-ble.exe' `
+            -OutputDirectory 'artifacts/release/win-x64' `
+            -RuntimeLicenseDirectory $runtimeLicenses.FullName
 
       - name: Upload runnable package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desk_Puff-win-x64
-          path: artifacts/publish/win-x64/
+          path: artifacts/release/win-x64.zip
           if-no-files-found: error
           retention-days: 14
