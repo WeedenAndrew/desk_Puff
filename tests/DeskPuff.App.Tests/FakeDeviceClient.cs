@@ -78,6 +78,18 @@ internal sealed class FakeDeviceClient : IDeviceClient
         SnapshotChanged?.Invoke(this, Snapshot);
     }
 
+    public void EndHeating()
+    {
+        Snapshot = Snapshot with { OperatingState = DeviceOperatingState.Idle };
+        SnapshotChanged?.Invoke(this, Snapshot);
+    }
+
+    public void SetVaporControlSupported(bool supported)
+    {
+        Snapshot = Snapshot with { Capabilities = Snapshot.Capabilities! with { SupportsVaporControl = supported } };
+        SnapshotChanged?.Invoke(this, Snapshot);
+    }
+
     public Task<IReadOnlyList<DeviceCandidate>> ScanAsync(
         TimeSpan duration,
         CancellationToken cancellationToken) =>
@@ -183,7 +195,7 @@ internal sealed class FakeDeviceClient : IDeviceClient
         DeviceConnectionState.ConnectedControlEnabled,
         new DeviceIdentity(DeviceFamily.PeakPro, "Fake Peak", 0, "verified", null),
         new DeviceLimits(190, 327, TimeSpan.FromSeconds(10), TimeSpan.FromMinutes(2), 20, TimeSpan.FromSeconds(30)),
-        new DeviceCapabilities(true, true, true, true, 3),
+        new DeviceCapabilities(true, true, true, true, 3) { SupportsSessionVaporControl = true },
         ChamberKind.ThreeDXL,
         DeviceOperatingState.Idle,
         0,

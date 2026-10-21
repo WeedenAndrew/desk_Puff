@@ -11,7 +11,13 @@ public sealed record SessionOverride(
     double TargetTemperatureCelsius,
     TimeSpan Duration,
     VaporLevel Vapor,
-    IReadOnlyList<string> Colors);
+    IReadOnlyList<string> Colors)
+{
+    // Explicit actual-mode intent; legacy Vapor ordinals are never mapped implicitly.
+    public SessionVaporMode? VaporMode { get; init; }
+}
+
+public enum SessionVaporMode { Smooth, Bold, Intense, Extreme }
 
 /// <summary>
 /// Implemented by device clients that can run a set of parameters for a single
@@ -21,6 +27,8 @@ public sealed record SessionOverride(
 /// </summary>
 public interface ISessionOverrideClient
 {
+    bool HasPendingRecovery => false;
+
     /// <summary>
     /// Applies the parameters for the next session. An implementation that
     /// writes to hardware must validate independently and must not assume

@@ -37,6 +37,7 @@ public sealed class SavedHeatingJsonFlowTests
             TargetTemperatureCelsius = 210,
             DurationSeconds = 65,
             Vapor = VaporLevel.Standard,
+            VaporMode = SessionVaporMode.Smooth,
             BoostTemperatureCelsius = 5,
             BoostDurationSeconds = 10,
             ColorProfileName = "Morning colors",
@@ -110,6 +111,8 @@ public sealed class SavedHeatingJsonFlowTests
         await viewModel.InitializeAsync();
         viewModel.ShowProfilesCommand.Execute(null);
         viewModel.HeatingProfileName = "Created from device";
+        // A device's unread legacy value is not an actual-mode choice.
+        viewModel.EditorVaporMode = SessionVaporMode.Smooth;
 
         Assert.IsTrue(viewModel.SaveHeatingProfileCommand.CanExecute(null),
             "A local JSON save must not inherit the device-write four-color limit.");

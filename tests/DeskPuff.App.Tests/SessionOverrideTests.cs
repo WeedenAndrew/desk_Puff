@@ -107,6 +107,10 @@ public sealed class SessionOverrideTests
         await StartAsync(viewModel);
 
         Assert.AreEqual(1, client.StopCallCount);
+        // This fake acknowledges Stop before publishing Idle; cleanup must wait
+        // for actual idle telemetry rather than issue a second view-model clear.
+        client.EndHeating();
+        await controller.RefreshAsync(CancellationToken.None);
         Assert.AreEqual(1, overrides.ClearCount);
     }
 
@@ -216,7 +220,7 @@ public sealed class SessionOverrideTests
             10,
             10,
             "Custom colorway",
-            SavedColors);
+            SavedColors) { VaporMode = SessionVaporMode.Smooth };
 
     // Goes through the command so a refusal lands in StatusText the way it does
     // for the user, rather than surfacing as an exception the test swallows.

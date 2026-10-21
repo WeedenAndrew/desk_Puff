@@ -51,6 +51,23 @@ internal static class LoraxValueCodec
         return Encoding.UTF8.GetBytes(value);
     }
 
+    internal static string ReadFirmwareIdentity(ReadOnlySpan<byte> value)
+    {
+        if (value.IsEmpty) { return "Unknown"; }
+        // Preserve the complete printable label; never convert ASCII 'A' as a
+        // numeric revision. Binary legacy revisions admit one byte or the documented zero-padded uint32.
+        string text = Encoding.ASCII.GetString(value).TrimEnd('\0');
+        if (text.Length >= 2 && text.All(character => char.IsAsciiLetterOrDigit(character) || character == '-'))
+        {
+            return text;
+        }
+        if (value.Length == 1 || (value.Length == 4 && value[1] == 0 && value[2] == 0 && value[3] == 0))
+        {
+            return RevisionNumberToString(value[0]);
+        }
+        return "Unknown";
+    }
+
     internal static string RevisionNumberToString(byte revision)
     {
         int number = revision;

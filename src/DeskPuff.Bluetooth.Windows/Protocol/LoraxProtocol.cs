@@ -23,6 +23,7 @@ internal enum LoraxWriteContext
 {
     Normal,
     ThcParameters,
+    RuntimeSession,
 }
 
 internal readonly record struct LoraxReply(
@@ -96,7 +97,14 @@ internal static class LoraxProtocol
         // validated session overrides. The ordinary allowlist is never mutated.
         bool thcParameterPath = context == LoraxWriteContext.ThcParameters &&
             path is LoraxPaths.ActiveProfileTemperature or LoraxPaths.ActiveProfileTime;
-        if (!LoraxPaths.IsWriteAllowed(path) && !thcParameterPath)
+        bool runtimePath = context == LoraxWriteContext.RuntimeSession && path is
+            LoraxPaths.ActiveProfileTemperature or LoraxPaths.ActiveProfileTime or "/p/app/thc/intn" or
+            LoraxPaths.ActiveProfile or LoraxPaths.ModeCommand or LoraxPaths.TemperatureOverride or LoraxPaths.TimeOverride;
+        if (context == LoraxWriteContext.RuntimeSession && !runtimePath)
+        {
+            throw new DeviceWriteBlockedException("The runtime session context does not admit this path.");
+        }
+        if (!LoraxPaths.IsWriteAllowed(path) && !thcParameterPath && !runtimePath)
         {
             throw new DeviceWriteBlockedException($"The Lorax path '{path}' is not allowlisted for writes.");
         }

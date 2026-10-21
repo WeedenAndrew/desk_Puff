@@ -64,7 +64,10 @@ public sealed record DeviceIdentity(
     string Name,
     uint ModelCode,
     string FirmwareVersion,
-    string? SerialNumber);
+    string? SerialNumber)
+{
+    public string FirmwareWireHex { get; init; } = string.Empty;
+}
 
 public sealed record DeviceLimits(
     double MinimumTemperatureCelsius,
@@ -91,7 +94,10 @@ public sealed record DeviceCapabilities(
     bool SupportsThreeDXL,
     bool SupportsIndependentBoost,
     bool SupportsLighting,
-    int MaximumConsecutiveBoosts);
+    int MaximumConsecutiveBoosts)
+{
+    public bool SupportsSessionVaporControl { get; init; }
+}
 
 public sealed record HeatProfile(
     int Index,
@@ -103,6 +109,8 @@ public sealed record HeatProfile(
     TimeSpan BoostDuration,
     string ColorHex)
 {
+    public SessionVaporMode? VaporMode { get; init; }
+
     public IReadOnlyList<string> ColorPalette { get; init; } = [ColorHex];
 
     public bool HasDeviceColor { get; init; }
@@ -132,6 +140,10 @@ public sealed record DeviceSnapshot(
     bool IsFirmwareVerified,
     string? Fault)
 {
+    public SessionVaporMode? RuntimeVaporMode { get; init; }
+
+    public bool IsAppOnlyContext => ActiveProfileIndex == 255;
+
     public TimeSpan SessionRemaining =>
         SessionTotal > SessionElapsed ? SessionTotal - SessionElapsed : TimeSpan.Zero;
 

@@ -15,6 +15,12 @@ public sealed partial class LoraxDeviceClient
     {
         DeviceSnapshot live = await RefreshAsync(cancellationToken).ConfigureAwait(false);
         EnsureAllowed(DeviceAction.ApplySessionOverride, safetyPolicy.ValidateSessionOverride(sessionOverride, live));
+        if (sessionOverride.VaporMode is not null)
+        {
+            await ApplyRuntimeSessionAsync(sessionOverride, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if (runtimeSession?.HasRecovery == true) { throw new DeviceSafetyException("Restore pending runtime recovery before a legacy session."); }
         // Freeze the local display palette; it must not become mutable proof owned by a caller.
         SessionOverride applied = sessionOverride with { Colors = sessionOverride.Colors.ToArray() };
         byte[] duration = LoraxValueCodec.WriteSingle(sessionOverride.Duration.TotalSeconds);
@@ -82,6 +88,11 @@ public sealed partial class LoraxDeviceClient
 
     public async Task ClearSessionOverrideAsync(CancellationToken cancellationToken)
     {
+        if (runtimeSession?.HasRecovery == true)
+        {
+            await ClearRuntimeSessionAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
         DeviceSnapshot live = await RefreshAsync(cancellationToken).ConfigureAwait(false);
         EnsureAllowed(DeviceAction.SelectProfile, safetyPolicy.Evaluate(DeviceAction.SelectProfile, live));
         ReadOnlyMemory<byte> slot = await ReadAsync(LoraxPaths.ActiveProfile, 1, cancellationToken).ConfigureAwait(false);
@@ -125,7 +136,7 @@ public sealed partial class LoraxDeviceClient
     private async Task DetectUntrackedSessionParametersAsync(CancellationToken cancellationToken)
     {
         SessionParameterState state = await ReadSessionParameterStateAsync(cancellationToken).ConfigureAwait(false);
-        HasUntrackedSessionParameters = !state.LiveMatchesSlot;
+        HasUntrackedSessionParameters = runtimeSession?.HasRecovery == true || !state.LiveMatchesSlot;
         diagnosticLog.Write(HasUntrackedSessionParameters
             ? $"SESSION OVERRIDE connect-check result=mismatch {DescribeLive(state)}; expected {DescribeSlot(state)}; writePerformed=false"
             : $"SESSION OVERRIDE connect-check result=slot-match {DescribeLive(state)}; expected {DescribeSlot(state)}; writePerformed=false");
@@ -135,7 +146,13 @@ public sealed partial class LoraxDeviceClient
         SessionStartExpectation? expectedProbeParameters,
         CancellationToken cancellationToken)
     {
+        if (runtimeSession?.HasRecovery == true)
+        {
+            await runtimeSession.VerifyAppliedAsync(CurrentRuntimeOwner, cancellationToken).ConfigureAwait(false);
+            return;
+        }
         SessionParameterState state = await ReadSessionParameterStateAsync(cancellationToken).ConfigureAwait(false);
+        if (state.SlotIndex == 255) { throw new DeviceSafetyException("Untracked app-only context; reselect a device profile before starting."); }
         if (expectedProbeParameters is SessionStartExpectation probe)
         {
             if (!SessionValuesMatch(state.LiveTemperature, state.LiveTime, probe.Temperature, probe.Time))
@@ -197,10 +214,11 @@ public sealed partial class LoraxDeviceClient
             LoraxPaths.ActiveProfileTime, 4, cancellationToken).ConfigureAwait(false);
         ReadOnlyMemory<byte> slot = await ReadAsync(
             LoraxPaths.ActiveProfile, 1, cancellationToken).ConfigureAwait(false);
-        if (slot.Length != 1 || slot.Span[0] > 3)
+        if (slot.Length != 1 || (slot.Span[0] > 3 && slot.Span[0] != 255))
         {
             throw new InvalidDataException("Cannot verify session parameters: the active slot is invalid.");
         }
+        if (slot.Span[0] == 255) { return new(255, liveTemperature, liveTime, ReadOnlyMemory<byte>.Empty, ReadOnlyMemory<byte>.Empty); }
 
         int slotIndex = slot.Span[0];
         ReadOnlyMemory<byte> slotTemperature = await ReadAsync(
@@ -236,7 +254,7 @@ public sealed partial class LoraxDeviceClient
 
     private static string DescribeSlot(SessionParameterState state) =>
         FormattableString.Invariant(
-            $"slot={state.SlotIndex} temp={ReadSessionValue(state.SlotTemperature):R}C time={ReadSessionValue(state.SlotTime):R}s");
+            $"slot={state.SlotIndex} temp={(state.SlotTemperature.Length == 4 ? ReadSessionValue(state.SlotTemperature) : double.NaN):R}C time={(state.SlotTime.Length == 4 ? ReadSessionValue(state.SlotTime) : double.NaN):R}s");
 
     private static string DescribeValues(ReadOnlyMemory<byte> temperature, ReadOnlyMemory<byte> time) =>
         FormattableString.Invariant(

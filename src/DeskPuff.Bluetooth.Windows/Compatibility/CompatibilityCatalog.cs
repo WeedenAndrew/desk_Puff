@@ -119,8 +119,14 @@ internal static class CompatibilityCatalog
     internal static DeviceCapabilities CapabilitiesFor(DeviceIdentity identity) =>
         identity.Family switch
         {
-            DeviceFamily.PeakPro => new(true, true, true, true, 4),
-            DeviceFamily.NewProxy => new(true, false, true, true, 4),
+            // Device-slot vapor editing remains unsupported. Runtime control is a
+            // separate narrow capability, still subject to firmware/limits admission.
+            DeviceFamily.PeakPro => new(false, true, true, true, 4)
+            {
+                // Protocol capability is separate from verified firmware/limits admission.
+                SupportsSessionVaporControl = identity.ModelCode == 13 && (IsHardwareVerified(identity) || identity.FirmwareVersion == "AW-1d90ae1"),
+            },
+            DeviceFamily.NewProxy => new(false, false, true, true, 4),
             _ => new(false, false, false, false, 0),
         };
 
@@ -131,3 +137,4 @@ internal static class CompatibilityCatalog
                 ? limits
                 : null;
 }
+

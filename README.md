@@ -85,12 +85,23 @@ The temperature boost is a **delta**, not a way to reach the device's maximum: a
 480 °F profile boosts to 495 °F and stops.
 
 Choose **USE PROFILE**, then **Start**, to run a saved JSON profile for one
-session. On verified hardware, the Bluetooth client writes and reads back the
-session temperature and duration before starting. On completion it reloads the
-selected device slot; the saved JSON file remains in the local library. This
-software path has managed fake-wire coverage and still needs personal device
-validation. No session-scoped path is known for colorway or vapor; colors are
-not applied live, and nonstandard vapor settings are refused.
+session. Choose **Smooth**, **Bold**, **Intense**, or **Extreme** in Profiles;
+new drafts default to Smooth. Older JSON keeps its original Standard/High/Max/XL
+value and needs a one-time explicit mode choice and save before Start. No old
+ordinal is silently treated as a new mode.
+
+The Bluetooth client verifies session time, temperature, vapor, and the app-only
+context before starting. It records original bytes and restores/compares them
+on stop or completion; failed recovery blocks another Start while Stop stays
+available. JSON colors remain display-only, and no device slot is written.
+
+Live activation requires the existing verified Peak Pro model 13 / AN identity,
+API 39, a 3DXL chamber, and successful runtime preflight. The reported AW-1d90ae1
+firmware remains unadmitted until its actual identity is established; it can
+still appear read-only. Managed fake-wire and UI tests do not establish physical
+restoration or Smooth/Bold runtime behavior on hardware. See the
+[runtime implementation and limits](docs/investigations/VAPOR-RUNTIME-IMPLEMENTATION-2026-10-20.md)
+and [dated capture evidence](docs/investigations/VAPOR-APP-ONLY-SESSION-2026-10-17.md).
 
 **WRITE PROFILE** edits a device slot. It preserves the original lighting
 document, including identity, metadata and animation data. Unchanged animation

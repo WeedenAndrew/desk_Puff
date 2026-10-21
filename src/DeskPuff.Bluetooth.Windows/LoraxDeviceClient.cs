@@ -76,6 +76,7 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
     public async Task ConnectAsync(DeviceCandidate candidate, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        runtimeSession?.InvalidateApplication();
         AppliedSessionOverride = null; // A new connection must not inherit another connection's proof.
         HasUntrackedSessionParameters = false;
         SetSnapshot(DeviceSnapshot.Disconnected with
@@ -96,6 +97,11 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
             DeviceSnapshot snapshot = await ReadInitialSnapshotAsync(cancellationToken).ConfigureAwait(false);
             await DetectUntrackedSessionParametersAsync(cancellationToken).ConfigureAwait(false);
             SetSnapshot(snapshot);
+            if (runtimeSession?.HasRecovery == true && runtimeSession.Owns(CurrentRuntimeOwner) && snapshot.IsFirmwareVerified && snapshot.OperatingState == DeviceOperatingState.Idle)
+            {
+                using CancellationTokenSource cleanup = new(TimeSpan.FromSeconds(15));
+                await ClearRuntimeSessionAsync(cleanup.Token).ConfigureAwait(false);
+            }
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -112,6 +118,14 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
 
     public async Task DisconnectAsync(CancellationToken cancellationToken)
     {
+        runtimeSession?.InvalidateApplication();
+        Exception? recoveryFailure = null;
+        if (runtimeSession?.HasRecovery == true && runtimeSession.Owns(CurrentRuntimeOwner) && Snapshot.OperatingState == DeviceOperatingState.Idle)
+        {
+            using CancellationTokenSource cleanup = new(TimeSpan.FromSeconds(15));
+            try { await ClearRuntimeSessionAsync(cleanup.Token).ConfigureAwait(false); }
+            catch (Exception exception) { recoveryFailure = exception; diagnosticLog.WriteException("Runtime session disconnect recovery", exception); }
+        }
         await transport.DisconnectAsync(cancellationToken).ConfigureAwait(false);
         // Forget local proof only after disconnect succeeds. A failed disconnect
         // may leave this client live; clearing the proof first would make it lie.
@@ -123,6 +137,7 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
         lastBatteryRead = DateTimeOffset.MinValue;
         supportedBatteryPath = null;
         SetSnapshot(DeviceSnapshot.Disconnected);
+        if (recoveryFailure is not null) { throw new IOException("Disconnected with pending runtime recovery; reconnect the same device before starting.", recoveryFailure); }
     }
 
     public async Task<DeviceSnapshot> RefreshAsync(CancellationToken cancellationToken)
@@ -221,6 +236,7 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
             throw new ArgumentOutOfRangeException(nameof(profileIndex));
         }
 
+        if (runtimeSession?.HasRecovery == true) { await ClearRuntimeSessionAsync(cancellationToken).ConfigureAwait(false); }
         bool transmitted = await WriteAsync(
             LoraxPaths.ActiveProfile,
             new byte[] { (byte)profileIndex },
@@ -296,7 +312,8 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
             safetyPolicy.Evaluate(DeviceAction.StartSession, Snapshot));
         await EnsureSessionStartParametersAsync(expectedProbeParameters, cancellationToken).ConfigureAwait(false);
         bool transmitted = await WriteAsync(
-            LoraxPaths.ModeCommand,
+            runtimeSession?.Owns(CurrentRuntimeOwner) == true ? LoraxWriteContext.RuntimeSession : LoraxWriteContext.Normal,
+            LoraxPaths.ModeCommand, 0,
             new byte[] { (byte)DeviceModeCommand.StartHeatCycle },
             cancellationToken).ConfigureAwait(false);
         if (transmitted)
@@ -311,7 +328,8 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
             DeviceAction.StopSession,
             safetyPolicy.Evaluate(DeviceAction.StopSession, Snapshot));
         bool transmitted = await WriteAsync(
-            LoraxPaths.ModeCommand,
+            runtimeSession?.Owns(CurrentRuntimeOwner) == true ? LoraxWriteContext.RuntimeSession : LoraxWriteContext.Normal,
+            LoraxPaths.ModeCommand, 0,
             new byte[] { (byte)DeviceModeCommand.AbortHeatCycle },
             cancellationToken).ConfigureAwait(false);
         if (transmitted)
@@ -343,9 +361,13 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
         double applied = await ReadBoostValueAsync(action, path, cancellationToken).ConfigureAwait(false);
         // Count device button steps, not app requests: tmpo / btmp or timo / btim.
         // The denominator is the profile's configured step, never the requested increment.
+        int boostSlot = live.ActiveProfileIndex == 255 && runtimeSession?.Owns(CurrentRuntimeOwner) == true
+            ? runtimeSession.OriginalSlot ?? throw new DeviceSafetyException("App-only boost has no verified source slot.")
+            : live.ActiveProfileIndex;
+        if (boostSlot is < 0 or > 3) { throw new DeviceSafetyException("App-only boost context is untracked; no boost sent."); }
         string stepPath = temperature
-            ? LoraxPaths.ProfileBoostTemperature(live.ActiveProfileIndex)
-            : LoraxPaths.ProfileBoostTime(live.ActiveProfileIndex);
+            ? LoraxPaths.ProfileBoostTemperature(boostSlot)
+            : LoraxPaths.ProfileBoostTime(boostSlot);
         double countIncrement = await ReadBoostValueAsync(action, stepPath, cancellationToken).ConfigureAwait(false);
         // Zero is a legitimate profile setting, but cannot establish a device-step count.
         // Fail closed with an actionable message before division; do not invent a step.
@@ -380,7 +402,9 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
         // Recheck state after the reads; a session may have ended while they ran.
         byte state = (await ReadAsync(LoraxPaths.OperatingState, 1, cancellationToken).ConfigureAwait(false)).Span[0];
         EnsureAllowed(action, safetyPolicy.Evaluate(action, live with { OperatingState = MapOperatingState(state) }));
-        await WriteAndVerifyAsync(path, LoraxValueCodec.WriteSingle(total), cancellationToken).ConfigureAwait(false);
+        await WriteAndVerifyAsync(
+            runtimeSession?.Owns(CurrentRuntimeOwner) == true && live.ActiveProfileIndex == 255 ? LoraxWriteContext.RuntimeSession : LoraxWriteContext.Normal,
+            path, LoraxValueCodec.WriteSingle(total), cancellationToken).ConfigureAwait(false);
         if (!traceWrites) { await RefreshAsync(cancellationToken).ConfigureAwait(false); }
     }
 
@@ -425,6 +449,12 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
             return;
         }
 
+        if (runtimeSession?.HasRecovery == true && runtimeSession.Owns(CurrentRuntimeOwner) && Snapshot.OperatingState == DeviceOperatingState.Idle)
+        {
+            using CancellationTokenSource cleanup = new(TimeSpan.FromSeconds(15));
+            try { await ClearRuntimeSessionAsync(cleanup.Token).ConfigureAwait(false); }
+            catch (Exception exception) { diagnosticLog.WriteException("Runtime recovery unconfirmed at disposal", exception); }
+        }
         disposed = true;
         await transport.DisposeAsync().ConfigureAwait(false);
     }
@@ -463,15 +493,13 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
             LoraxPaths.FirmwareVersion,
             12,
             cancellationToken).ConfigureAwait(false);
-        string firmware = firmwareBytes.IsEmpty
-            ? "Unknown"
-            : LoraxValueCodec.RevisionNumberToString(firmwareBytes.Span[0]);
+        string firmware = LoraxValueCodec.ReadFirmwareIdentity(firmwareBytes.Span);
         connectedIdentity = CompatibilityCatalog.Identify(
             connectedCandidate?.Name ?? transport.AdvertisedName,
             name,
             modelCode,
             firmware,
-            serialNumber: null);
+            serialNumber: null) with { FirmwareWireHex = Convert.ToHexString(firmwareBytes.Span) };
         bool isHardwareVerified = CompatibilityCatalog.IsHardwareVerified(connectedIdentity);
         BluetoothDiagnosticMessages.WriteIdentity(
             diagnosticLog,
@@ -559,6 +587,12 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
         DeviceOperatingState operatingState = MapOperatingState(operatingValue);
         TimeSpan stateTotal = SecondsOrZero(totalSeconds);
 
+        SessionVaporMode? runtimeVapor = null;
+        if (capabilities.SupportsSessionVaporControl && (activeProfile == 255 || AppliedSessionOverride?.VaporMode is not null))
+        {
+            ReadOnlyMemory<byte> intensity = await ReadAsync("/p/app/thc/intn", 4, cancellationToken).ConfigureAwait(false);
+            runtimeVapor = RuntimeVaporCodec.Decode(intensity.Span);
+        }
         return new DeviceSnapshot(
             verified
                 ? DeviceConnectionState.ConnectedControlEnabled
@@ -581,7 +615,7 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
             SecondsOrZero(elapsedSeconds),
             true,
             verified,
-            verified ? null : "Read-only until this exact firmware passes hardware safety verification.");
+            verified ? null : "Read-only until this exact firmware passes hardware safety verification.") { RuntimeVaporMode = runtimeVapor };
     }
 
     /// <summary>
@@ -733,7 +767,8 @@ public sealed partial class LoraxDeviceClient : IDeviceClient, ISessionOverrideC
         ReadOnlyMemory<byte> value,
         CancellationToken cancellationToken)
     {
-        byte[] body = LoraxProtocol.BuildWriteBody(context, path, offset, 0, value.Span);
+        byte flags = context == LoraxWriteContext.RuntimeSession ? (byte)0x04 : (byte)0;
+        byte[] body = LoraxProtocol.BuildWriteBody(context, path, offset, flags, value.Span);
         ReadOnlyMemory<byte> response = await transport.RunCommandAsync(
             LoraxOpcode.WriteShort,
             body,

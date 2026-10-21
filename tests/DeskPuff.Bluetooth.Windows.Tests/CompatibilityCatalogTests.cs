@@ -7,6 +7,17 @@ namespace DeskPuff.Bluetooth.Windows.Tests;
 public sealed class CompatibilityCatalogTests
 {
     [TestMethod]
+    [DataRow(DeviceFamily.PeakPro, 13, "AN")]
+    [DataRow(DeviceFamily.PeakPro, 13, "AO")]
+    [DataRow(DeviceFamily.PeakPro, 12, "AN")]
+    [DataRow(DeviceFamily.NewProxy, 13, "AN")]
+    [DataRow(DeviceFamily.Unknown, 13, "AN")]
+    public void VaporControl_IsNeverAdvertisedWithoutAnImplementedProtocol(DeviceFamily family, int modelCode, string firmware)
+    {
+        Assert.IsFalse(CompatibilityCatalog.CapabilitiesFor(new(family, "Test", checked((uint)modelCode), firmware, null)).SupportsVaporControl);
+    }
+
+    [TestMethod]
     public void KnownPeakProModelCode_IsRecognized()
     {
         DeviceIdentity identity = CompatibilityCatalog.Identify(

@@ -90,6 +90,8 @@ public sealed class SessionController(
             {
                 await client.ConnectAsync(candidate, cancellationToken).ConfigureAwait(false);
                 ResetSessionOverrideTracking();
+                sessionOverridePendingClear = overrideClient?.HasPendingRecovery == true;
+                sessionOverrideHeatingObserved = sessionOverridePendingClear && Snapshot.IsHeating;
             },
             cancellationToken);
 
@@ -116,7 +118,8 @@ public sealed class SessionController(
                         // Firmware retains THC parameters at natural completion. This
                         // verified reload stays under the same command gate as refresh.
                         diagnosticLog.Write("SESSION OVERRIDE session-ended cleanup=attempt");
-                        await ClearSessionOverrideCoreAsync(cancellationToken).ConfigureAwait(false);
+                        using CancellationTokenSource cleanup = new(TimeSpan.FromSeconds(15));
+                        await ClearSessionOverrideCoreAsync(cleanup.Token).ConfigureAwait(false);
                     }
                 }
                 return Snapshot;
@@ -168,7 +171,13 @@ public sealed class SessionController(
             DeviceAction.StopSession,
             async () =>
             {
+                sessionOverrideHeatingObserved |= sessionOverridePendingClear && Snapshot.IsHeating;
                 await client.StopSessionAsync(cancellationToken).ConfigureAwait(false);
+                if (sessionOverridePendingClear && Snapshot.OperatingState == DeviceOperatingState.Idle)
+                {
+                    using CancellationTokenSource cleanup = new(TimeSpan.FromSeconds(15));
+                    await ClearSessionOverrideCoreAsync(cleanup.Token).ConfigureAwait(false);
+                }
                 temperatureBoostsApplied = 0;
                 timeBoostsApplied = 0;
             },

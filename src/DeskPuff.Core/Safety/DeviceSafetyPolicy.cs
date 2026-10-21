@@ -203,17 +203,24 @@ public sealed class DeviceSafetyPolicy
             return SafetyDecision.Deny("Session override duration is outside verified safe limits.");
         }
 
-        // Deliberately stricter than profile-slot validation: even a 3DXL owner's
-        // XL profile is refused here although it is allowed in a slot. No session-scoped
-        // vapor path is known, and the client supplies Standard unconditionally rather
-        // than reading it. Revisit this asymmetry only when such a path is established.
-        if (sessionOverride.Vapor != VaporLevel.Standard)
+        // Actual named modes have a separate captured runtime capability. Legacy
+        // VaporLevel ordinals are not a mapping; Standard remains a compatibility
+        // admission for the older temperature/time-only API.
+        if (sessionOverride.VaporMode is { } mode)
+        {
+            if (!Enum.IsDefined(mode) || snapshot.Capabilities?.SupportsSessionVaporControl != true || snapshot.Chamber != ChamberKind.ThreeDXL)
+            {
+                return SafetyDecision.Deny("Named session vapor requires the captured model/firmware capability and a detected 3DXL chamber.");
+            }
+        }
+        else if (sessionOverride.Vapor != VaporLevel.Standard)
         {
             return SafetyDecision.Deny("Session override vapor must be Standard; no session-scoped vapor control is known.");
         }
 
         // Colours are display-only: validate RGB format, not device palette size.
-        // No session-scoped colorway path is known; allowing these does not apply them.
+        // The captured runtime color-transfer protocol is not implemented here;
+        // accepting display colors does not transmit a replacement program.
         if (sessionOverride.Colors is null ||
             !sessionOverride.Colors.All(color => color is not null && IsColor(color)))
         {

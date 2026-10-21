@@ -240,8 +240,11 @@ public sealed partial class ThcProbeTests
     // Real managed framing, status parsing and trace suppression; only the wire is fake.
     private sealed class ProbeTransport : ILoraxTransport
     {
-        private readonly SidecarLoraxTransport inner;
+        private SidecarLoraxTransport inner;
+        private readonly RecordingLog recordingLog;
+        private readonly bool traceMode;
         internal List<(string Path, byte[] Value)> Writes { get; } = [];
+        internal List<byte> WriteFlags { get; } = [];
         internal Dictionary<string, byte[]> Values { get; } = new(StringComparer.Ordinal)
         {
             [LoraxPaths.ModelCode] = [13, 0, 0, 0],
@@ -279,14 +282,22 @@ public sealed partial class ThcProbeTests
         internal Action<string, byte[]>? AfterWrite { get; set; }
         internal Func<LoraxOpcode, ReadOnlyMemory<byte>, Task>? BeforeCommandAsync { get; set; }
 
-        internal ProbeTransport(RecordingLog log, bool trace = false) =>
+        internal ProbeTransport(RecordingLog log, bool trace = false)
+        {
+            recordingLog = log;
+            traceMode = trace;
             inner = new(log, trace, SendFrameAsync);
+        }
 
         public bool IsConnected => inner.IsConnected;
         public string AdvertisedName => "PUFFCO PEAK";
         public Task<IReadOnlyList<DeviceCandidate>> ScanAsync(TimeSpan duration, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<DeviceCandidate>>([]);
-        public Task ConnectAsync(DeviceCandidate candidate, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task ConnectAsync(DeviceCandidate candidate, CancellationToken cancellationToken)
+        {
+            if (!inner.IsConnected) { inner = new(recordingLog, traceMode, SendFrameAsync); }
+            return Task.CompletedTask;
+        }
         public Task DisconnectAsync(CancellationToken cancellationToken) => inner.DisconnectAsync(cancellationToken);
         public Task TriggerBondingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public async Task<ReadOnlyMemory<byte>> RunCommandAsync(LoraxOpcode opcode, ReadOnlyMemory<byte> body, int maximumReplyLength, CancellationToken cancellationToken)
@@ -324,13 +335,14 @@ public sealed partial class ThcProbeTests
                     byte[] written = body[(4 + end)..].ToArray();
                     if (!AllowModeCommand) { Assert.AreNotEqual(LoraxPaths.ModeCommand, path); }
                     Writes.Add((path, written));
+                    WriteFlags.Add(body[2]);
                     if (Writes.Count == RejectWrite) { status = 0x7A; break; }
                     Values[path] = Mismatch ? Float(-1) : written;
                     if (path == AliasPath)
                     {
                         Values[path == LoraxPaths.ActiveProfileTime ? LoraxPaths.ProfileTime(0) : LoraxPaths.ProfileTemperature(0)] = written;
                     }
-                    if (path == LoraxPaths.ActiveProfile)
+                    if (path == LoraxPaths.ActiveProfile && written[0] <= 3)
                     {
                         Values[LoraxPaths.ActiveProfileTime] = Values[LoraxPaths.ProfileTime(written[0])];
                         Values[LoraxPaths.ActiveProfileTemperature] = Values[LoraxPaths.ProfileTemperature(written[0])];

@@ -183,6 +183,7 @@ internal sealed class DemoDeviceClient : IDeviceClient, ISessionOverrideClient
                 TargetTemperatureCelsius = requested.TargetTemperatureCelsius,
                 SessionTotal = requested.Duration,
                 Vapor = requested.Vapor,
+            RuntimeVaporMode = requested.VaporMode,
             };
         }
 
@@ -326,7 +327,7 @@ internal sealed class DemoDeviceClient : IDeviceClient, ISessionOverrideClient
                 "DEMO",
                 null),
             new DeviceLimits(180, 340, TimeSpan.FromSeconds(5), TimeSpan.FromMinutes(3), 20, TimeSpan.FromSeconds(30)),
-            new DeviceCapabilities(true, true, true, true, 4),
+            new DeviceCapabilities(true, true, true, true, 4) { SupportsSessionVaporControl = true },
             ChamberKind.ThreeDXL,
             DeviceOperatingState.Idle,
             profile.Index,
@@ -419,3 +420,4 @@ internal sealed class DemoDeviceClient : IDeviceClient, ISessionOverrideClient
 
     private void RaiseSnapshotChanged() => SnapshotChanged?.Invoke(this, Snapshot);
 }
+

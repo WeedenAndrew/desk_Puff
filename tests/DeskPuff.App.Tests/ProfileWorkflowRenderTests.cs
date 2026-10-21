@@ -3,12 +3,36 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using DeskPuff.App.ViewModels;
+using DeskPuff.Core.Devices;
 
 namespace DeskPuff.App.Tests;
 
 [TestClass]
 public sealed class ProfileWorkflowRenderTests
 {
+    [TestMethod]
+    public void VaporCapabilityNotice_FitsBesideProfileEditing() =>
+        HeadlessRender.OnUiThread(async () =>
+        {
+            RenderedFrame frame = await HeadlessRender.CaptureAsync("vapor-warning", viewModel =>
+            {
+                DeviceSnapshot snapshot = FakeDeviceClient.CreateSafeSnapshot();
+                viewModel.ApplySnapshot(snapshot with { Capabilities = snapshot.Capabilities! with { SupportsVaporControl = false } });
+                viewModel.ShowProfilesCommand.Execute(null);
+                viewModel.EditorVaporMode = null;
+                StringAssert.Contains(viewModel.VaporCapabilityText, "JSON colors are display-only");
+                return Task.CompletedTask;
+            }, window =>
+            {
+                AssertVisibleWithinWindow(window, "SaveHeatingProfileButton");
+                AssertVisibleWithinWindow(window, "VaporCapabilityNotice");
+                AssertVisibleWithinWindow(window, "ProfilesNavButton");
+                AssertVisibleWithinWindow(window, "ColorNavButton");
+            });
+            frame.Save(Path.Combine(PageCaptures.MediaDirectory(), "vapor-warning.png"));
+            return true;
+        });
+
     [TestMethod]
     [DataRow(false)]
     [DataRow(true)]

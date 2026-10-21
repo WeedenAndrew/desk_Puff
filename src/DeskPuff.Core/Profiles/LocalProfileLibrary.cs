@@ -31,6 +31,8 @@ public sealed record LocalHeatingProfile
 
     public VaporLevel Vapor { get; init; }
 
+    public SessionVaporMode? VaporMode { get; init; }
+
     public double BoostTemperatureCelsius { get; init; }
 
     public double BoostDurationSeconds { get; init; }
@@ -305,6 +307,7 @@ public sealed class LocalProfileLibrary(string rootPath, IDiagnosticLog? diagnos
         double.IsFinite(profile.DurationSeconds) &&
         profile.DurationSeconds is >= 10 and <= 120 &&
         Enum.IsDefined(profile.Vapor) &&
+        (profile.VaporMode is null || Enum.IsDefined(profile.VaporMode.Value)) &&
         double.IsFinite(profile.BoostTemperatureCelsius) &&
         profile.BoostTemperatureCelsius is >= 0 and <= 30 &&
         double.IsFinite(profile.BoostDurationSeconds) &&

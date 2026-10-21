@@ -288,6 +288,7 @@ internal sealed record HeatingProfileOption(
     IReadOnlyList<string> Colors,
     string StorageFileName = "")
 {
+    public SessionVaporMode? VaporMode { get; init; }
     public string DetailText => $"{DeviceProfileName} • {ColorProfileName}";
 
     public LinearGradientBrush Gradient => PalettePresentation.Sweep(Colors);
@@ -413,6 +414,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     private double editorTemperature = 500;
     private double editorDurationSeconds = 40;
     private VaporLevel editorVapor;
+    private SessionVaporMode? editorVaporMode = SessionVaporMode.Smooth;
     private double editorBoostTemperature = 10;
     private double editorBoostSeconds = 10;
     private readonly List<string> editorColors = ["#0000FF"];
@@ -615,6 +617,12 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     }
 
     public IReadOnlyList<VaporLevel> VaporLevels { get; } = Enum.GetValues<VaporLevel>();
+    public IReadOnlyList<SessionVaporMode> SessionVaporModes { get; } = Enum.GetValues<SessionVaporMode>();
+    public SessionVaporMode? EditorVaporMode
+    {
+        get => editorVaporMode;
+        set => SetProperty(ref editorVaporMode, value);
+    }
 
     public IReadOnlyList<ShortcutOption> ShortcutOptions { get; } = AvailableShortcutOptions;
 
@@ -918,6 +926,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         EditorTemperature = ToDisplayTemperature(260);
         EditorDurationSeconds = 40;
         EditorVapor = VaporLevel.Standard;
+        EditorVaporMode = SessionVaporMode.Smooth;
         EditorBoostTemperature = ToDisplayTemperatureDelta(5);
         EditorBoostSeconds = 10;
         SelectedSavedHeatingProfile = null;
@@ -1075,7 +1084,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         (snapshot.IsHeating ||
          (snapshot.OperatingState == DeviceOperatingState.Idle &&
           snapshot.Chamber is not (ChamberKind.None or ChamberKind.Unknown) &&
-          snapshot.CurrentTemperatureCelsius is not null));
+          snapshot.CurrentTemperatureCelsius is not null && SavedSessionRestriction.Length == 0));
 
     public bool CanBoost =>
         snapshot.ConnectionState == DeviceConnectionState.ConnectedControlEnabled &&
@@ -1109,7 +1118,25 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string ProfileName => (DisplayedSavedProfile?.Name ?? snapshot.ActiveProfileName)
         .ToUpperInvariant();
 
-    public string VaporText => $"{snapshot.Vapor.ToString().ToUpperInvariant()} VAPOR";
+    private bool SupportsVaporControl => snapshot.Capabilities?.SupportsVaporControl == true;
+
+    public string VaporText => snapshot.RuntimeVaporMode is { } mode ? $"{mode.ToString().ToUpperInvariant()} VAPOR"
+        : SupportsVaporControl
+        ? $"{snapshot.Vapor.ToString().ToUpperInvariant()} VAPOR"
+        : "DEVICE VAPOR • UNREAD";
+
+    public string VaporCapabilityText => EditorVaporMode is null
+        ? $"This older profile uses {EditorVapor}. Choose a vapor mode above before starting. JSON colors are display-only."
+        : snapshot.Capabilities?.SupportsSessionVaporControl == true && snapshot.IsFirmwareVerified
+            ? "Vapor applies only to this session. JSON colors are display-only."
+            : "Saved locally. Live use is not available for this device's confirmed firmware yet.";
+
+    public string SavedSessionRestriction =>
+        snapshot.IsHeating || savedProfileSelection is not { } saved ? string.Empty
+            : saved.VaporMode is not null
+                ? snapshot.Capabilities?.SupportsSessionVaporControl == true && snapshot.IsFirmwareVerified ? string.Empty
+                    : "This device's firmware is not confirmed for saved sessions yet. Start is blocked."
+                : $"This older profile uses {saved.Vapor}. Open Profiles, choose a vapor mode, then save before starting.";
 
     public string ChamberText => snapshot.Chamber switch
     {
@@ -1623,14 +1650,18 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         if (snapshot.IsHeating)
         {
+            // Controller owns the complete Stop/restore transaction exactly once.
             await controller.StopAsync(cancellationToken);
-            await ClearSessionOverrideAsync(cancellationToken);
             StatusText = "Heat cycle stopped";
         }
         else
         {
             // Validate and apply before starting, so a rejected profile never
             // leaves a session running on the wrong parameters.
+            if (SavedSessionRestriction.Length > 0)
+            {
+                throw new DeviceSafetyException(SavedSessionRestriction);
+            }
             HeatingProfileOption? running = savedProfileSelection;
             if (running is not null)
             {
@@ -1671,7 +1702,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 profile.TargetTemperatureCelsius,
                 profile.Duration,
                 profile.Vapor,
-                profile.ColorPalette),
+                profile.ColorPalette) { VaporMode = saved.VaporMode },
             cancellationToken);
         ApplySnapshot(controller.Snapshot);
     }
@@ -1752,10 +1783,13 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
     // parameters, records the selection, and loads the editor. No device path here.
     private void SelectSavedProfile(HeatingProfileOption saved)
     {
-        HeatProfile profile = BuildSavedHeatProfile(saved);
+        // Keep unsupported saved intent visible, including XL on a non-3DXL
+        // chamber. It remains locally validated and cannot reach Start.
+        bool unsupportedVapor = !SupportsVaporControl && saved.Vapor != VaporLevel.Standard;
+        HeatProfile profile = BuildSavedHeatProfile(saved, validateForDevice: !unsupportedVapor);
         savedProfileSelection = saved;
         LoadEditorFromSavedProfile(saved, profile);
-        StatusText = $"Selected saved profile {saved.Name}";
+        StatusText = SavedSessionRestriction.Length > 0 ? SavedSessionRestriction : $"Selected saved profile {saved.Name}";
         NotifyProfileSelectionProperties();
     }
 
@@ -1979,6 +2013,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 saved.Colors[0])
             {
                 ColorPalette = saved.Colors,
+                VaporMode = saved.VaporMode,
             };
             if (!ValidateLocalHeatingConfiguration(
                     candidate,
@@ -1999,7 +2034,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 SavedColorPalettes.FirstOrDefault(
                     palette => ColorsMatch(palette.Colors, saved.Colors))?.Name ?? saved.ColorProfileName,
                 saved.Colors,
-                stored.FileName));
+                stored.FileName) { VaporMode = saved.VaporMode });
         }
 
         SelectedSavedHeatingProfile = SavedHeatingProfiles.FirstOrDefault();
@@ -2199,6 +2234,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
                 TargetTemperatureCelsius = editorProfile.TargetTemperatureCelsius,
                 DurationSeconds = editorProfile.Duration.TotalSeconds,
                 Vapor = editorProfile.Vapor,
+                VaporMode = editorProfile.VaporMode,
                 BoostTemperatureCelsius = editorProfile.BoostTemperatureCelsius,
                 BoostDurationSeconds = editorProfile.BoostDuration.TotalSeconds,
                 ColorProfileName = colorProfileName,
@@ -2216,7 +2252,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             stored.Profile.BoostDurationSeconds,
             stored.Profile.ColorProfileName,
             stored.Profile.Colors,
-            stored.FileName);
+            stored.FileName) { VaporMode = stored.Profile.VaporMode };
         if (existingIndex >= 0)
         {
             if (ReferenceEquals(savedProfileSelection, SavedHeatingProfiles[existingIndex]))
@@ -2242,14 +2278,15 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             throw new InvalidOperationException("Select a local heating profile first.");
         SelectSavedProfile(savedProfile);
         CurrentPage = AppPage.Home;
-        StatusText = $"Selected {savedProfile.Name} • press Start to run it for this session";
+        StatusText = SavedSessionRestriction.Length > 0 ? SavedSessionRestriction
+            : $"Selected {savedProfile.Name} • press Start to run it for this session";
         return Task.CompletedTask;
     }
 
     private HeatProfile BuildSavedHeatProfile(HeatingProfileOption savedProfile, bool validateForDevice = true)
     {
         HeatProfile profile = new(
-            snapshot.ActiveProfileIndex,
+            0, // Local JSON has no physical slot, including while hcs is FF.
             savedProfile.DeviceProfileName,
             savedProfile.TargetTemperatureCelsius,
             TimeSpan.FromSeconds(savedProfile.DurationSeconds),
@@ -2259,6 +2296,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             savedProfile.Colors[0])
         {
             ColorPalette = savedProfile.Colors,
+            VaporMode = savedProfile.VaporMode,
         };
         ValidateLocalHeatingConfiguration(
             profile,
@@ -2273,6 +2311,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         EditorTemperature = ToDisplayTemperature(profile.TargetTemperatureCelsius);
         EditorDurationSeconds = profile.Duration.TotalSeconds;
         EditorVapor = profile.Vapor;
+        EditorVaporMode = profile.VaporMode;
         EditorBoostTemperature = ToDisplayTemperatureDelta(profile.BoostTemperatureCelsius);
         EditorBoostSeconds = profile.BoostDuration.TotalSeconds;
         SetEditorPalette(profile.ColorPalette);
@@ -2372,6 +2411,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         EditorTemperature = ToDisplayTemperature(profile.TargetTemperatureCelsius);
         EditorDurationSeconds = profile.Duration.TotalSeconds;
         EditorVapor = profile.Vapor;
+        EditorVaporMode = profile.VaporMode;
         EditorBoostTemperature = ToDisplayTemperatureDelta(profile.BoostTemperatureCelsius);
         EditorBoostSeconds = profile.BoostDuration.TotalSeconds;
         HeatingProfileName = profile.Name;
@@ -2575,6 +2615,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             nameof(DeviceModelText),
             nameof(ProfileName),
             nameof(VaporText),
+            nameof(VaporCapabilityText),
+            nameof(SavedSessionRestriction),
             nameof(ChamberText),
             nameof(BatteryText),
             nameof(BatteryBlockOneOpacity),
@@ -2674,6 +2716,8 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void NotifyProfileSelectionProperties()
     {
+        OnPropertyChanged(nameof(SavedSessionRestriction));
+        OnPropertyChanged(nameof(CanStartOrStop));
         OnPropertyChanged(nameof(SelectedProfileIndex));
         OnPropertyChanged(nameof(SelectedProfile));
         OnPropertyChanged(nameof(SavedProfileCaptionVisibility));
@@ -2777,6 +2821,7 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
             TargetTemperatureCelsius = FromDisplayTemperature(EditorTemperature),
             Duration = TimeSpan.FromSeconds(EditorDurationSeconds),
             Vapor = EditorVapor,
+            VaporMode = EditorVaporMode,
             BoostTemperatureCelsius = FromDisplayTemperatureDelta(EditorBoostTemperature),
             BoostDuration = TimeSpan.FromSeconds(EditorBoostSeconds),
             ColorHex = colorPalette[0],
@@ -3081,9 +3126,10 @@ internal sealed class MainViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(propertyName);
         if (propertyName is nameof(EditorName) or nameof(HeatingProfileName) or nameof(PaletteName) or
             nameof(EditorTemperature) or nameof(EditorDurationSeconds) or nameof(EditorBoostTemperature) or
-            nameof(EditorBoostSeconds) or nameof(EditorVapor))
+            nameof(EditorBoostSeconds) or nameof(EditorVapor) or nameof(EditorVaporMode))
         {
             NotifyLocalDraftProperties();
+            if (propertyName is nameof(EditorVaporMode) or nameof(EditorVapor)) { OnPropertyChanged(nameof(VaporCapabilityText)); }
         }
         return true;
     }
