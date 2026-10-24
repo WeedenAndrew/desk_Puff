@@ -45,5 +45,5 @@ jobs:
         run: dotnet build .\desk_Puff.slnx --configuration Release --no-restore
 
       - name: Analyze
-        uses: github/codeql-action/analyze@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
 
